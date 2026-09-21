@@ -1,0 +1,6 @@
+# Keep the repository owner subject to the same signoff checks as contributors.
+require:
+  members: true
+allowRemediationCommits:
+  individual: false
+  thirdParty: false

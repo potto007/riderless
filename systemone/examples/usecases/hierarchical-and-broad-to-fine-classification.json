@@ -1,0 +1,2603 @@
+{
+  "suite": "hierarchical-and-broad-to-fine-classification",
+  "family": "Hierarchical traversal and confidence-gated broad-to-fine classification",
+  "source": [
+    "Hierarchical classification (hierarchical_classification)",
+    "Classification using confidence (classification_using_confidence)",
+    "Advanced structure (primitives/advanced), hierarchical Choice pattern",
+    "Hierarchical decisions row of the build-spec pattern table"
+  ],
+  "description": "One compact three-level intake taxonomy (7 divisions plus an explicit other option, 5 groups per division, 4 categories per group) is reused by every case, so per-node accuracy aggregates across the suite. Each level is its own Choice question; deeper questions name the gold parent path in their instructions, so a level is scored conditioned on a correct parent (teacher forced). Every question is prefilled independently, so a deeper question never leaks its parent into a shallower one. Cases are built around near-miss sibling pairs at each depth, which makes two metrics available from one run: per-node accuracy and full-path exact match, and the gap between them is the finding. Three case shapes go beyond plain traversal. Beam frontier cases batch one group Choice for the gold division and one for a rival division whose gold answer is none_applicable, which is the pruning signal. Broad-to-fine pairs give both twins an identical group option set that includes insufficient_detail, so the determined and underdetermined members of a pair differ only in the state and their Choice confidences can be compared directly. Rerank cases score one Noul per candidate division and rank them by P(true). Metrics this suite supports: level-1 accuracy, full-path exact match, backoff-adjusted accuracy that credits the division when the group is wrong, and the paired confidence separation between each bf-x-determined case and its bf-x-underdetermined twin. It does not measure flat intent classification (covered by the BANKING77 set), calibration in any absolute sense (the conditional softmax is uncalibrated, which is why the confidence test is a within-pair comparison and not a threshold), or multi-request beam search executed end to end, since the caller joins levels itself.",
+  "cases": [
+    {
+      "name": "dns-outage-named-resolver",
+      "difficulty": "easy",
+      "rationale": "The reporter names failing hostname lookups and rules out certificates, network reachability, and process health, leaving one infrastructure cause.",
+      "request": {
+        "state": "Ticket 41120, raised by the on-call engineer at 02:31 UTC. Since 02:14 UTC our API hosts can no longer turn the name vault.internal into an address. Lookups against the internal resolver time out. The TLS certificates on that host are valid for another five months, the resolver answers ping from the same subnet, and every service process is up and healthy. Every failing request dies at the name lookup step. Customers are seeing errors right now.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Technical and Engineering / infra_outage. Choose the specific category inside that group.",
+            "criteria": {
+              "network_partition": "Hosts cannot reach each other across a network boundary.",
+              "dns_resolution": "Names fail to resolve to addresses.",
+              "certificate_expiry": "A TLS certificate is expired or untrusted.",
+              "power_datacenter": "A facility power or cooling failure."
+            }
+          },
+          "certificates_valid": {
+            "type": "noul",
+            "instructions": "Does the item state that the TLS certificates on the affected host are valid?"
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "technical_engineering"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "infra_outage"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "dns_resolution"
+        },
+        "certificates_valid": {
+          "type": "noul",
+          "expected": true
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "settlement-callbacks-stopped",
+      "difficulty": "medium",
+      "rationale": "The money arrived and the dashboard agrees, so nothing is charged wrongly; the failing thing is the outbound event callback, which is an integration defect.",
+      "request": {
+        "state": "Merchant support thread, merchant ID 7741. Merchant writes: Since Tuesday our accounting ledger has been missing settlements. We build that ledger from the payment_settled callbacks you post to our endpoint, and not one has arrived since 09:00 Tuesday. Your dashboard lists every settlement as completed and the money is sitting in our bank account, so the funds themselves are fine. It is the notifications that stopped. Our endpoint returns 200 for the test event we fire from your console, and our certificate and API key are unchanged.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Technical and Engineering / api_integration. Choose the specific category inside that group.",
+            "criteria": {
+              "auth_token_error": "Credentials or tokens are rejected.",
+              "rate_limit_rejection": "Calls are refused for exceeding a quota.",
+              "payload_contract_mismatch": "A request or response body does not match the agreed contract.",
+              "webhook_delivery_failure": "Outbound event callbacks are not arriving or not being acknowledged."
+            }
+          },
+          "funds_received": {
+            "type": "noul",
+            "instructions": "Does the merchant state that the settled money did reach their bank account?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "technical_engineering"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "api_integration"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "webhook_delivery_failure"
+        },
+        "funds_received": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "voiceover-checkout-unlabelled",
+      "difficulty": "medium",
+      "rationale": "The reviewer explicitly says the app does not crash and works for a sighted user on the same build; the failure is confined to assistive technology.",
+      "request": {
+        "state": "App store review triage, build 8.2.0. Reviewer writes: To be clear, 8.2 does not crash for me and nothing is drawn wrong on screen. With VoiceOver turned on, though, the checkout button is announced only as button with no label, and focus jumps back to the top of the list after every tap, so I cannot reach the confirm step at all. My partner, who does not use a screen reader, completed the same purchase on the same build on the same phone model without trouble.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Technical and Engineering / client_app_defect. Choose the specific category inside that group.",
+            "criteria": {
+              "mobile_crash": "The application terminates unexpectedly.",
+              "ui_rendering_defect": "Content is drawn incorrectly while the app keeps running.",
+              "offline_sync_defect": "Changes made without connectivity are lost or conflict on reconnect.",
+              "accessibility_defect": "The app is unusable with assistive technology such as a screen reader."
+            }
+          },
+          "app_keeps_running": {
+            "type": "noul",
+            "instructions": "Does the reviewer state that the application keeps running rather than terminating?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "technical_engineering"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "client_app_defect"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "accessibility_defect"
+        },
+        "app_keeps_running": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "nightly-load-field-rename",
+      "difficulty": "medium",
+      "rationale": "The feed arrived and rows were written, so this is not an ingestion failure; the stated cause is the vendor renaming and retyping a field.",
+      "request": {
+        "state": "Nightly load report for the partner-claims feed, run 2026-03-11. The run finished in 41 minutes, which is inside the usual window, and the operator on duty signed it off before the downstream alert fired at 06:20. The source file landed on time at 01:05 and all 214,880 rows were read. Of those rows, 214,612 were written to the staging table with a null member key, because the vendor's release notes for version 9 renamed member_id to memberId and changed it from an integer to a zero-padded string; our loader still looks for the old name and type and silently defaults the column. The remaining rows came from a legacy path that still sends the old field. No file was missing, nothing was loaded twice, and no one has asked us to reprocess an earlier window. Downstream eligibility checks now show a sharp drop in matched members, which is the symptom that raised this ticket.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Technical and Engineering / data_pipeline. Choose the specific category inside that group.",
+            "criteria": {
+              "ingestion_failure": "A source feed did not load at all.",
+              "duplicate_records": "The same source record landed more than once.",
+              "backfill_request": "A request to reprocess a historical window.",
+              "schema_drift": "The source changed its field names, types, or structure."
+            }
+          },
+          "file_arrived": {
+            "type": "noul",
+            "instructions": "Does the report state that the source file did arrive and was read?"
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "technical_engineering"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "data_pipeline"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "schema_drift"
+        },
+        "file_arrived": {
+          "type": "noul",
+          "expected": true
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "same-amount-charged-twice",
+      "difficulty": "easy",
+      "rationale": "The customer states one order was charged twice on the same card on the same day.",
+      "request": {
+        "state": "Customer email: I was charged 64.00 EUR twice for order 55-9120, both on 9 March and both on the same card. I only placed the order once. Please take one of the two charges off my invoice.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Billing and Finance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "invoice_disputes": "A customer contests what an invoice or a completed charge says.",
+              "subscription_lifecycle": "Changes to a subscription: upgrades, cancellations, trials, and seat counts.",
+              "payment_processing": "The mechanics of moving money: cards, card-network disputes, payouts, bank mandates.",
+              "procurement_ap": "Money the company owes to suppliers and employees.",
+              "financial_reporting": "Internal and statutory reporting of financial results."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Billing and Finance / invoice_disputes. Choose the specific category inside that group.",
+            "criteria": {
+              "incorrect_tax_rate": "The tax applied to the invoice is wrong.",
+              "duplicate_charge": "The same amount was charged more than once.",
+              "unapplied_credit": "An issued credit does not appear on the invoice.",
+              "currency_conversion_error": "The invoice used the wrong currency or rate."
+            }
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "billing_finance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "invoice_disputes"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "duplicate_charge"
+        }
+      }
+    },
+    {
+      "name": "reason-code-dispute-case",
+      "difficulty": "medium",
+      "rationale": "A card network has opened a formal dispute case against us with an evidence deadline, which is the card-network mechanism, not a customer invoice contest.",
+      "request": {
+        "state": "Automated notice forwarded by the payments team: the card network has opened dispute case CB-88213 against merchant account 4412 under reason code 10.4, for 218.40 USD on transaction 9f21. The cardholder told their issuer they did not authorize it. We must upload compelling evidence through the network portal by 20 March, nine days from today, or the amount is debited automatically. The cardholder has not contacted us and we have not issued any invoice adjustment.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Billing and Finance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "invoice_disputes": "A customer contests what an invoice or a completed charge says.",
+              "subscription_lifecycle": "Changes to a subscription: upgrades, cancellations, trials, and seat counts.",
+              "payment_processing": "The mechanics of moving money: cards, card-network disputes, payouts, bank mandates.",
+              "procurement_ap": "Money the company owes to suppliers and employees.",
+              "financial_reporting": "Internal and statutory reporting of financial results."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Billing and Finance / payment_processing. Choose the specific category inside that group.",
+            "criteria": {
+              "card_declined": "A payment instrument was refused by the issuer.",
+              "payout_delay": "An outbound payout to a seller or partner has not arrived.",
+              "chargeback_notice": "A card network has opened a formal dispute case against us.",
+              "bank_mandate_failure": "A direct-debit mandate is invalid or was revoked."
+            }
+          },
+          "evidence_deadline_stated": {
+            "type": "noul",
+            "instructions": "Does the notice state a deadline by which we must supply evidence?"
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "billing_finance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "payment_processing"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "chargeback_notice"
+        },
+        "evidence_deadline_stated": {
+          "type": "noul",
+          "expected": true
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "po-line-quantity-mismatch",
+      "difficulty": "hard",
+      "rationale": "Neither record alone is wrong; the invoice bills 40 units at a higher unit price than the purchase order authorized, which only shows when the two are compared.",
+      "request": {
+        "state": {
+          "purchase_order": {
+            "id": "PO-2291",
+            "supplier": "Halberd Instruments",
+            "line_items": [
+              {
+                "sku": "HX-9",
+                "quantity": 25,
+                "unit_price": 138.0
+              }
+            ],
+            "approved_by": "operations"
+          },
+          "supplier_invoice": {
+            "id": "INV-77412",
+            "supplier": "Halberd Instruments",
+            "references_po": "PO-2291",
+            "line_items": [
+              {
+                "sku": "HX-9",
+                "quantity": 40,
+                "unit_price": 151.0
+              }
+            ],
+            "payment_terms_days": 30,
+            "days_outstanding": 4
+          },
+          "note": "Goods receipt has not been recorded yet. The supplier has not claimed interest and is not asking to be set up for payment."
+        },
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Billing and Finance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "invoice_disputes": "A customer contests what an invoice or a completed charge says.",
+              "subscription_lifecycle": "Changes to a subscription: upgrades, cancellations, trials, and seat counts.",
+              "payment_processing": "The mechanics of moving money: cards, card-network disputes, payouts, bank mandates.",
+              "procurement_ap": "Money the company owes to suppliers and employees.",
+              "financial_reporting": "Internal and statutory reporting of financial results."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Billing and Finance / procurement_ap. Choose the specific category inside that group.",
+            "criteria": {
+              "vendor_onboarding": "Setting up a new supplier for payment.",
+              "purchase_order_mismatch": "A supplier invoice does not agree with its purchase order.",
+              "late_payment_penalty": "A supplier claims interest or a penalty for late payment.",
+              "expense_reimbursement": "An employee expense claim."
+            }
+          },
+          "invoice_matches_po": {
+            "type": "noul",
+            "instructions": "Do the invoice line items match the purchase order line items?",
+            "criteria": {
+              "true": "Quantity and unit price agree on every line.",
+              "false": "At least one quantity or unit price differs."
+            }
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "billing_finance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "procurement_ap"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "purchase_order_mismatch"
+        },
+        "invoice_matches_po": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "auditor-sample-request",
+      "difficulty": "medium",
+      "rationale": "An external auditor asking for supporting documentation is a financial reporting task; no court or regulator compels it.",
+      "request": {
+        "state": "Message from the engagement partner at our external audit firm: for the year-end fieldwork we have selected a sample of 30 revenue transactions and need the signed order form, the delivery confirmation, and the cash receipt for each. Please load them to the audit portal. This is the standard sample for the opinion; it is not a regulator request and there is no court order or subpoena behind it.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Billing and Finance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "invoice_disputes": "A customer contests what an invoice or a completed charge says.",
+              "subscription_lifecycle": "Changes to a subscription: upgrades, cancellations, trials, and seat counts.",
+              "payment_processing": "The mechanics of moving money: cards, card-network disputes, payouts, bank mandates.",
+              "procurement_ap": "Money the company owes to suppliers and employees.",
+              "financial_reporting": "Internal and statutory reporting of financial results."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Billing and Finance / financial_reporting. Choose the specific category inside that group.",
+            "criteria": {
+              "revenue_recognition": "When and how revenue is booked.",
+              "budget_variance": "Actual spend or income differs from budget.",
+              "audit_evidence_request": "An auditor asks for supporting documentation.",
+              "tax_filing_extension": "More time is sought to file a return."
+            }
+          },
+          "legally_compelled": {
+            "type": "noul",
+            "instructions": "Is the request backed by a court order, subpoena, or regulator demand?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "billing_finance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "financial_reporting"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "audit_evidence_request"
+        },
+        "legally_compelled": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "mutual-nda-first-turn",
+      "difficulty": "easy",
+      "rationale": "Counsel is asked to review a mutual confidentiality agreement before signature.",
+      "request": {
+        "state": "Request to the legal inbox: the design partner sent over their standard mutual confidentiality agreement ahead of the discovery call. Could you review it and tell us whether we can sign as drafted? There is no rush, nothing is blocked, and the project itself does not start until next quarter.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Legal and Compliance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "contract_lifecycle": "Negotiating, renewing, or ending a commercial agreement.",
+              "intellectual_property": "Trademarks, patents, copyright, and software licences.",
+              "regulatory_filings": "Obligations owed to a government body or regulator.",
+              "dispute_litigation": "An adversarial legal proceeding, or the credible threat of one.",
+              "employment_law": "Legal questions about the employment relationship itself."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Legal and Compliance / contract_lifecycle. Choose the specific category inside that group.",
+            "criteria": {
+              "nda_review": "Reviewing a confidentiality agreement.",
+              "msa_redline": "Negotiating clauses in a master services agreement.",
+              "renewal_notice": "A notice that a term is about to renew.",
+              "termination_for_convenience": "Ending an agreement without alleging fault."
+            }
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "legal_compliance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "contract_lifecycle"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "nda_review"
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "photo-reuse-takedown",
+      "difficulty": "medium",
+      "rationale": "The demand concerns copied photographs, not confusion between brand names; the logo appears only incidentally inside one of the photographs.",
+      "request": {
+        "state": "Letter received by the brand team from a photographer's agent: your marketing site reproduces eleven of our client's photographs of the 2024 harvest, taken from their portfolio without a licence. We require their removal within fourteen days. We note in passing that our client's own small logo is visible in the corner of one photograph, but we make no claim about your company name, your marks, or any likelihood of confusion between the two brands. Our claim is solely about the unlicensed reproduction of the images.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Legal and Compliance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "contract_lifecycle": "Negotiating, renewing, or ending a commercial agreement.",
+              "intellectual_property": "Trademarks, patents, copyright, and software licences.",
+              "regulatory_filings": "Obligations owed to a government body or regulator.",
+              "dispute_litigation": "An adversarial legal proceeding, or the credible threat of one.",
+              "employment_law": "Legal questions about the employment relationship itself."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Legal and Compliance / intellectual_property. Choose the specific category inside that group.",
+            "criteria": {
+              "trademark_conflict": "Two marks are confusingly similar.",
+              "patent_disclosure": "Recording an invention for possible filing.",
+              "copyright_takedown": "A demand to remove copied expressive material.",
+              "open_source_license": "Obligations attached to open-source code."
+            }
+          },
+          "claim_concerns_photographs": {
+            "type": "noul",
+            "instructions": "Is the claim in the letter about copied photographs rather than about brand names or marks?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "legal_compliance"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "intellectual_property"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "copyright_takedown"
+        },
+        "claim_concerns_photographs": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "interpreter-before-visit",
+      "difficulty": "medium",
+      "rationale": "The appointment time is fixed and not being changed; the only request is language support for the patient at that visit.",
+      "request": {
+        "state": "Voicemail transcript left for the clinic intake desk by a patient's son: My mother has her cardiology appointment on Thursday at 14:20 and we want to keep exactly that slot, please do not move it. She speaks only Tigrinya and last time nobody could explain the discharge instructions to her. Could you arrange for a Tigrinya interpreter to be present for that visit? Her coverage is active and the referral is already on file, so there is nothing else to sort out.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Clinical Administration division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "prior_authorization": "Getting a payer to approve a service before or after it is delivered.",
+              "claims_coding": "The codes on a submitted claim and the payer edits applied to them.",
+              "records_management": "Custody of the medical record: release, amendment, correction, retention.",
+              "patient_access": "Services that let a patient reach care: eligibility, referrals, financial help, language.",
+              "clinical_supply": "Physical goods used in care: devices, drugs, cold chain, controlled substances."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Clinical Administration / patient_access. Choose the specific category inside that group.",
+            "criteria": {
+              "eligibility_verification": "Confirming that coverage is active for a patient.",
+              "referral_coordination": "Arranging a referral between providers.",
+              "financial_assistance": "Charity care, sliding-scale, or payment-plan help.",
+              "interpreter_request": "Arranging language or sign-language interpretation for a patient."
+            }
+          },
+          "asks_to_move_appointment": {
+            "type": "noul",
+            "instructions": "Does the caller ask for the appointment to be moved to a different time?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "patient_access"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "interpreter_request"
+        },
+        "asks_to_move_appointment": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "denial-appeal-letter",
+      "difficulty": "medium",
+      "rationale": "The payer has already refused the authorization and the clinic is challenging that refusal inside the stated appeal window.",
+      "request": {
+        "state": "Note from the authorizations team: the plan denied the authorization for the sleep study on 2 March, citing lack of documented daytime somnolence. The ordering physician disagrees and has written a rebuttal with the Epworth score attached. We want to file the challenge against that denial. The plan allows sixty days to appeal, so the deadline is 1 May. The study has not been performed, and we are not asking the plan to decide any faster than usual.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Clinical Administration division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "prior_authorization": "Getting a payer to approve a service before or after it is delivered.",
+              "claims_coding": "The codes on a submitted claim and the payer edits applied to them.",
+              "records_management": "Custody of the medical record: release, amendment, correction, retention.",
+              "patient_access": "Services that let a patient reach care: eligibility, referrals, financial help, language.",
+              "clinical_supply": "Physical goods used in care: devices, drugs, cold chain, controlled substances."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Clinical Administration / prior_authorization. Choose the specific category inside that group.",
+            "criteria": {
+              "initial_request": "A first authorization request for a planned service.",
+              "expedited_review": "A request to decide an authorization faster than the standard clock.",
+              "appeal_after_denial": "A challenge to an authorization the payer has already refused.",
+              "retroactive_authorization": "A request to authorize a service that was already delivered."
+            }
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "prior_authorization"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "appeal_after_denial"
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "modifier-25-refused",
+      "difficulty": "medium",
+      "rationale": "The remark code refuses the modifier itself as unsupported; the item states the payer did not merge the two procedures into one payable code.",
+      "request": {
+        "state": "Denial worklist entry, claim 88-40217. The office visit line was refused with remark code M80 and the narrative the modifier reported is not valid for the procedure billed. Both procedures remain listed separately on the remittance at their own allowed amounts; the payer did not combine them into a single payable code and did not reduce either one. The diagnosis codes and the care setting on the claim are both correct and are not in question. Our coder maintains the modifier is supported by the note and wants to contest the refusal of that modifier.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Clinical Administration division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "prior_authorization": "Getting a payer to approve a service before or after it is delivered.",
+              "claims_coding": "The codes on a submitted claim and the payer edits applied to them.",
+              "records_management": "Custody of the medical record: release, amendment, correction, retention.",
+              "patient_access": "Services that let a patient reach care: eligibility, referrals, financial help, language.",
+              "clinical_supply": "Physical goods used in care: devices, drugs, cold chain, controlled substances."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Clinical Administration / claims_coding. Choose the specific category inside that group.",
+            "criteria": {
+              "diagnosis_code_correction": "A diagnosis code on the claim is wrong and must be changed.",
+              "bundling_edit": "The payer merged separately billed procedures into one payable code.",
+              "place_of_service_error": "The claim records the wrong care setting.",
+              "modifier_dispute": "A two-character modifier attached to a procedure code is refused or contested."
+            }
+          },
+          "payer_merged_procedures": {
+            "type": "noul",
+            "instructions": "Did the payer merge the two procedures into one payable code?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "claims_coding"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "modifier_dispute"
+        },
+        "payer_merged_procedures": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "records-copy-to-attorney",
+      "difficulty": "medium",
+      "rationale": "A signed patient authorization asking for a copy of the chart to go to a third party is a release of information, not a compelled production and not a data-protection rights request.",
+      "request": {
+        "state": "Fax cover sheet received by the health information management office: enclosed is a HIPAA authorization signed by the patient on 4 March instructing you to send a complete copy of her chart for 2023 and 2024 to this law office. No subpoena or court order accompanies this request and none is needed. The patient does not dispute anything in the chart and is not asking for anything to be corrected, amended, or deleted.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Clinical Administration division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "prior_authorization": "Getting a payer to approve a service before or after it is delivered.",
+              "claims_coding": "The codes on a submitted claim and the payer edits applied to them.",
+              "records_management": "Custody of the medical record: release, amendment, correction, retention.",
+              "patient_access": "Services that let a patient reach care: eligibility, referrals, financial help, language.",
+              "clinical_supply": "Physical goods used in care: devices, drugs, cold chain, controlled substances."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Clinical Administration / records_management. Choose the specific category inside that group.",
+            "criteria": {
+              "amendment_request": "A patient asks to add a statement of disagreement to the record.",
+              "release_of_information": "An authorized party asks for a copy of the record to be sent out.",
+              "chart_correction": "A clinician corrects a factual error they entered.",
+              "retention_destruction": "Scheduled archiving or destruction of records."
+            }
+          },
+          "patient_authorization_signed": {
+            "type": "noul",
+            "instructions": "Does the item state that the patient signed an authorization for the release?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "records_management"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "release_of_information"
+        },
+        "patient_authorization_signed": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "parcel-scanned-late",
+      "difficulty": "easy",
+      "rationale": "The parcel is still in the carrier network with recent scans and is simply late.",
+      "request": {
+        "state": "Customer chat: my order 71-3390 was due Tuesday and it is now Friday. The carrier tracking page still updates, the last scan was this morning at their regional depot, and it says out for delivery tomorrow. Nothing is lost, I just want to know why it is running four days behind.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Commerce and Fulfillment / shipping_logistics. Choose the specific category inside that group.",
+            "criteria": {
+              "delivery_damage": "Goods arrived broken or crushed.",
+              "carrier_delay": "The carrier is holding or running late with a parcel that is still moving.",
+              "customs_hold": "A border authority is holding the shipment pending paperwork or duty.",
+              "lost_shipment": "The parcel cannot be located and is presumed gone."
+            }
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "shipping_logistics"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "carrier_delay"
+        }
+      }
+    },
+    {
+      "name": "border-held-pallet",
+      "difficulty": "medium",
+      "rationale": "The border authority is holding the freight for a commercial-invoice and duty correction; the item states no licence or controlled-goods question arises.",
+      "request": {
+        "state": "Freight forwarder update on shipment SP-2240, two pallets of stainless fittings: customs at the destination port has placed the consignment on hold. They want the commercial invoice reissued with the correct tariff heading and the import duty settled before release. The goods themselves are ordinary industrial parts, no export licence question has been raised by either side, and the pallets are physically accounted for in the bonded warehouse.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Commerce and Fulfillment / shipping_logistics. Choose the specific category inside that group.",
+            "criteria": {
+              "delivery_damage": "Goods arrived broken or crushed.",
+              "carrier_delay": "The carrier is holding or running late with a parcel that is still moving.",
+              "customs_hold": "A border authority is holding the shipment pending paperwork or duty.",
+              "lost_shipment": "The parcel cannot be located and is presumed gone."
+            }
+          },
+          "goods_located": {
+            "type": "noul",
+            "instructions": "Does the update state that the goods are physically accounted for?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "shipping_logistics"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "customs_hold"
+        },
+        "goods_located": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "price-published-wrong",
+      "difficulty": "medium",
+      "rationale": "The published price on the listing is wrong; the stock figure and the listing text are both stated to be correct.",
+      "request": {
+        "state": "Merchandising alert: the 2.4 metre garden bench is live at 34.90 GBP instead of 349.00 GBP after last night's feed import dropped a digit. The photographs, description, and attributes on the listing are all correct, and the warehouse count of 62 units matches the system exactly. Eleven orders have already been placed at the wrong figure and the listing is still live at that figure right now.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Commerce and Fulfillment / catalog_merchandising. Choose the specific category inside that group.",
+            "criteria": {
+              "listing_content_defect": "The listing text, images, or attributes are wrong.",
+              "inventory_count_mismatch": "The listed quantity does not match the warehouse.",
+              "pricing_error": "The published price itself is wrong.",
+              "promotion_stacking": "Two promotions combine in a way that was not intended."
+            }
+          },
+          "orders_already_placed": {
+            "type": "noul",
+            "instructions": "Does the alert state that orders were already placed at the wrong figure?"
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "catalog_merchandising"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "pricing_error"
+        },
+        "orders_already_placed": {
+          "type": "noul",
+          "expected": true
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "seller-fee-rate-contested",
+      "difficulty": "medium",
+      "rationale": "The seller's payouts arrived on time and in full; what they contest is the marketplace fee percentage applied to their category.",
+      "request": {
+        "state": "Seller support case 5512. Seller writes: your February statement deducted 15 percent on every order in my category. My agreement says 11 percent for handmade goods and nobody told me it had changed. The payouts themselves landed on the agreed dates and the amounts match the statement to the cent, so the transfers are not the issue. I am contesting the rate you applied, and I have not been subject to any enforcement action on my account.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Commerce and Fulfillment / marketplace_seller. Choose the specific category inside that group.",
+            "criteria": {
+              "seller_onboarding": "Admitting and verifying a new seller.",
+              "policy_violation_appeal": "A seller contests an enforcement action against their account.",
+              "commission_dispute": "A seller contests the marketplace fee rate applied to their sales.",
+              "review_manipulation_report": "A report of fabricated or incentivized reviews."
+            }
+          },
+          "payouts_arrived": {
+            "type": "noul",
+            "instructions": "Does the seller state that their payouts arrived on the agreed dates?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "marketplace_seller"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "commission_dispute"
+        },
+        "payouts_arrived": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "trade-two-night-shifts",
+      "difficulty": "easy",
+      "rationale": "Two rostered staff have agreed to trade assigned shifts and want the roster updated.",
+      "request": {
+        "state": "Message to the ward manager: Priya and I have agreed to trade. She takes my two night shifts on the 14th and 15th, and I take her two day shifts on the 21st and 22nd. Both of us are qualified for the other's slot. Could you update the published roster? No extra hours are involved for either of us.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Scheduling and Workforce division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "shift_operations": "Who works which shift on the published roster.",
+              "appointment_booking": "The customer or patient appointment calendar itself.",
+              "time_attendance": "The recorded hours a worker actually worked.",
+              "leave_absence": "Planned or protected time away from work.",
+              "capacity_planning": "How much staffed capacity future periods will need."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Scheduling and Workforce / shift_operations. Choose the specific category inside that group.",
+            "criteria": {
+              "shift_swap": "Two workers agree to trade assigned shifts.",
+              "overtime_approval": "Approving hours beyond the standard schedule.",
+              "call_out_coverage": "Finding cover for a worker who called out.",
+              "schedule_publication_delay": "The roster was published later than the policy allows."
+            }
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "scheduling_workforce"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "shift_operations"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "shift_swap"
+        }
+      }
+    },
+    {
+      "name": "badge-log-versus-timesheet",
+      "difficulty": "hard",
+      "rationale": "The worker's account and the badge reader agree that she left at 18:40, but the time system holds no clock-out event, which is exactly a missing punch.",
+      "request": {
+        "state": "Payroll query from a store supervisor: Danica says she clocked out at 18:40 on Saturday as usual. The time system shows her clock-in at 09:55 and no clock-out event at all for that day, so it has left the shift open and paid her nothing after 09:55. The door badge log records her badging out of the building at 18:41. She took her full rest break and the break is recorded normally. She was at her assigned store, not another location.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Scheduling and Workforce division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "shift_operations": "Who works which shift on the published roster.",
+              "appointment_booking": "The customer or patient appointment calendar itself.",
+              "time_attendance": "The recorded hours a worker actually worked.",
+              "leave_absence": "Planned or protected time away from work.",
+              "capacity_planning": "How much staffed capacity future periods will need."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Scheduling and Workforce / time_attendance. Choose the specific category inside that group.",
+            "criteria": {
+              "break_compliance": "A required rest break was missed or short.",
+              "missed_punch": "A clock-in or clock-out event was never recorded.",
+              "timesheet_correction": "Adjusting recorded hours after the fact.",
+              "geofence_mismatch": "The clock event was recorded outside the permitted location."
+            }
+          },
+          "clock_out_recorded": {
+            "type": "noul",
+            "instructions": "Does the time system hold a clock-out event for that day?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "scheduling_workforce"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "time_attendance"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "missed_punch"
+        },
+        "clock_out_recorded": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "court-summons-absence",
+      "difficulty": "medium",
+      "rationale": "The absence is compelled by a court summons, which the policy codes separately from discretionary paid time off.",
+      "request": {
+        "state": "Manager note to the workforce desk: Ibrahim has been summoned for jury service and will be absent for what the court says may be up to two weeks. He offered to put the days down as paid time off, but our policy has a separate paid civic-duty code for court-summoned absence and I would rather it is coded properly. He has not been given his start date yet, so there is no date to plan around; he is waiting on the court.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Scheduling and Workforce division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "shift_operations": "Who works which shift on the published roster.",
+              "appointment_booking": "The customer or patient appointment calendar itself.",
+              "time_attendance": "The recorded hours a worker actually worked.",
+              "leave_absence": "Planned or protected time away from work.",
+              "capacity_planning": "How much staffed capacity future periods will need."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Scheduling and Workforce / leave_absence. Choose the specific category inside that group.",
+            "criteria": {
+              "pto_request": "Discretionary paid time off.",
+              "unpaid_leave": "Time away without pay.",
+              "bereavement_leave": "Leave after a death in the family.",
+              "jury_duty": "Court-summoned civic duty leave."
+            }
+          },
+          "offered_to_use_pto": {
+            "type": "noul",
+            "instructions": "Did the employee offer to record the absence as paid time off?"
+          },
+          "urgency": {
+            "type": "score",
+            "instructions": "Rate how urgent the item is, using only the timing facts the item states.",
+            "criteria": [
+              "No deadline is stated and nothing is described as currently blocked or going wrong.",
+              "Someone is described as waiting, but no date or external deadline is stated.",
+              "A specific deadline is stated and it is more than two days away.",
+              "Something is stated to be going wrong right now, or a stated deadline is within two days."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "scheduling_workforce"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "leave_absence"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "jury_duty"
+        },
+        "offered_to_use_pto": {
+          "type": "noul",
+          "expected": true
+        },
+        "urgency": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "spoofed-supplier-email",
+      "difficulty": "easy",
+      "rationale": "An employee is reporting a deceptive message that imitates a supplier and asks for credentials, and states that nothing was entered.",
+      "request": {
+        "state": "Report from an accounts payable clerk: I received an email that looks like it comes from our stationery supplier, with their logo, asking me to sign in on a page to release a held invoice. The sending address is a lookalike domain and the link does not go to their site. I did not enter my password and I did not click through. Reporting it so you can block the domain.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Security and Privacy division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "access_management": "Who holds which credential or role in our systems.",
+              "incident_response": "An active or suspected security event under investigation.",
+              "data_privacy": "An individual exercising statutory rights over their own personal data.",
+              "vendor_security": "The security posture of third parties we send data to.",
+              "device_endpoint": "Laptops, phones, and other endpoints we manage."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Security and Privacy / incident_response. Choose the specific category inside that group.",
+            "criteria": {
+              "phishing_report": "A user reports a deceptive message asking for credentials.",
+              "malware_containment": "Isolating infected hosts.",
+              "credential_leak": "Secrets have been exposed somewhere they should not be.",
+              "insider_misuse": "An authorized person used access improperly."
+            }
+          },
+          "message_imitates_supplier": {
+            "type": "noul",
+            "instructions": "Does the report describe a message that imitates a known supplier?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "incident_response"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "phishing_report"
+        },
+        "message_imitates_supplier": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "delete-my-data-request",
+      "difficulty": "medium",
+      "rationale": "An individual is exercising a statutory deletion right over their own data and explicitly declines a copy of it.",
+      "request": {
+        "state": "Message to the privacy mailbox: I closed my account in January and I am writing under Article 17 to ask you to delete the personal data you still hold about me, including the marketing profile. I do not want a copy of it and I am not asking you to send me anything. Please confirm deletion within the statutory month.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Security and Privacy division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "access_management": "Who holds which credential or role in our systems.",
+              "incident_response": "An active or suspected security event under investigation.",
+              "data_privacy": "An individual exercising statutory rights over their own personal data.",
+              "vendor_security": "The security posture of third parties we send data to.",
+              "device_endpoint": "Laptops, phones, and other endpoints we manage."
+            }
+          },
+          "l3_leaf": {
+            "type": "choice",
+            "instructions": "The item has already been routed to Security and Privacy / data_privacy. Choose the specific category inside that group.",
+            "criteria": {
+              "subject_access_request": "A person asks for a copy of the data held about them.",
+              "consent_withdrawal": "A person withdraws consent for a specific processing purpose.",
+              "cross_border_transfer": "Moving personal data between jurisdictions.",
+              "erasure_request": "A person asks that data about them be deleted."
+            }
+          },
+          "asks_for_a_copy": {
+            "type": "noul",
+            "instructions": "Does the sender ask to be sent a copy of the data held about them?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "l2_group": {
+          "type": "choice",
+          "expected": "data_privacy"
+        },
+        "l3_leaf": {
+          "type": "choice",
+          "expected": "erasure_request"
+        },
+        "asks_for_a_copy": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "meeting-room-cooling-failure",
+      "difficulty": "medium",
+      "rationale": "The request is to repair building air conditioning; the legal recording and the nearby equipment room are context, not the thing being asked for.",
+      "request": {
+        "state": "Facilities request from the office manager: the air conditioning in meeting room 4 has been blowing warm since Monday and the room reached 29 degrees yesterday. We had to move a recorded legal deposition out of it, and the equipment cupboard next door shares the same duct, so please treat it as a building repair with some priority. The building contractor needs raising, not our own engineers. No computer system is misbehaving and no legal advice is being sought here.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "about_building_equipment": {
+            "type": "noul",
+            "instructions": "Is the repair being asked for a piece of building equipment?"
+          },
+          "software_fault_reported": {
+            "type": "noul",
+            "instructions": "Does the request report a fault in a software system we operate?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "other_unclassified"
+        },
+        "about_building_equipment": {
+          "type": "noul",
+          "expected": true
+        },
+        "software_fault_reported": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "bf-commerce-determined",
+      "difficulty": "medium",
+      "rationale": "The buyer contests a fee deducted from a completed return, which fixes the returns and warranty group; paired with bf-commerce-underdetermined.",
+      "request": {
+        "state": "Customer service case 9910: the customer returned a pair of boots inside the return window using the label we issued, and the refund landed eleven days later with 15 percent held back as a restocking charge. She accepts that the return itself was processed and does not want an exchange or a repair. She says no restocking charge was disclosed at checkout and wants that deduction reversed.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "fee_was_deducted": {
+            "type": "noul",
+            "instructions": "Does the case state that an amount was held back from the refund?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "returns_warranty"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "fee_was_deducted": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "bf-commerce-underdetermined",
+      "difficulty": "hard",
+      "rationale": "The note fixes the division through the retail order desk but names no group; the fair label is the backoff option. Paired with bf-commerce-determined.",
+      "request": {
+        "state": "Escalation note from the retail order desk: customer 88-2214 has an open issue on order R-91388 that the store team could not close today. Please have the commerce group pick it up in the morning.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Commerce and Fulfillment division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "order_management": "The order record itself, before anything ships.",
+              "shipping_logistics": "Physical movement of goods to the buyer.",
+              "returns_warranty": "Goods coming back, being repaired, or being exchanged.",
+              "catalog_merchandising": "What is listed for sale, how it is described, and at what price.",
+              "marketplace_seller": "Third-party sellers operating on our marketplace.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "enough_for_group_commerce": {
+            "type": "noul",
+            "instructions": "Does the note say enough to choose one group inside the division over the others?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "commerce_fulfillment"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "insufficient_detail"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "enough_for_group_commerce": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "bf-security-determined",
+      "difficulty": "easy",
+      "rationale": "A vendor is notifying us that it is adding a downstream processor, which fixes the vendor security group; paired with bf-security-underdetermined.",
+      "request": {
+        "state": "Notice from our analytics vendor: from 1 May we will add a new downstream processor in Ireland for log storage, replacing our current provider. Under clause 9 of the data processing agreement you have thirty days from today to object in writing. No incident has occurred and no test report is attached.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Security and Privacy division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "access_management": "Who holds which credential or role in our systems.",
+              "incident_response": "An active or suspected security event under investigation.",
+              "data_privacy": "An individual exercising statutory rights over their own personal data.",
+              "vendor_security": "The security posture of third parties we send data to.",
+              "device_endpoint": "Laptops, phones, and other endpoints we manage.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "objection_window_open": {
+            "type": "noul",
+            "instructions": "Does the notice give us a period in which we may object?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "vendor_security"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "objection_window_open": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "bf-security-underdetermined",
+      "difficulty": "medium",
+      "rationale": "The ticket fixes the division through the security mailbox and the owning team, but the substance did not transfer. Paired with bf-security-determined.",
+      "request": {
+        "state": "Ticket auto-created by the security mailbox: forwarded from the chief information security officer, needs handling by the security team this week, reference SEC-4471. The original attachment did not transfer.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Security and Privacy division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "access_management": "Who holds which credential or role in our systems.",
+              "incident_response": "An active or suspected security event under investigation.",
+              "data_privacy": "An individual exercising statutory rights over their own personal data.",
+              "vendor_security": "The security posture of third parties we send data to.",
+              "device_endpoint": "Laptops, phones, and other endpoints we manage.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "enough_for_group_security": {
+            "type": "noul",
+            "instructions": "Does the ticket say enough to choose one group inside the division over the others?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "insufficient_detail"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "enough_for_group_security": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "bf-legal-determined",
+      "difficulty": "medium",
+      "rationale": "A counterparty is giving notice that a master services agreement will auto-renew, which fixes the contract lifecycle group; paired with bf-legal-underdetermined.",
+      "request": {
+        "state": "Letter to the deal desk from the counterparty's contracts team: this is formal notice that the master services agreement dated 12 June 2023 will renew automatically for a further twelve months on 12 June unless either party gives ninety days written notice. Nothing is in dispute, no clause is being renegotiated, and no fees are contested.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Legal and Compliance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "contract_lifecycle": "Negotiating, renewing, or ending a commercial agreement.",
+              "intellectual_property": "Trademarks, patents, copyright, and software licences.",
+              "regulatory_filings": "Obligations owed to a government body or regulator.",
+              "dispute_litigation": "An adversarial legal proceeding, or the credible threat of one.",
+              "employment_law": "Legal questions about the employment relationship itself.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "notice_period_stated": {
+            "type": "noul",
+            "instructions": "Does the letter state a notice period for stopping the renewal?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "legal_compliance"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "contract_lifecycle"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "notice_period_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "bf-legal-underdetermined",
+      "difficulty": "hard",
+      "rationale": "The note fixes the division through counsel and the legal team but names no matter type; the fair label is the backoff option. Paired with bf-legal-determined.",
+      "request": {
+        "state": "Note from the deal desk: counsel has an open matter on the Aldridge account and it needs the legal team's attention before Friday. The summary did not copy across when the record was moved.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_group_or_backoff": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Legal and Compliance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "contract_lifecycle": "Negotiating, renewing, or ending a commercial agreement.",
+              "intellectual_property": "Trademarks, patents, copyright, and software licences.",
+              "regulatory_filings": "Obligations owed to a government body or regulator.",
+              "dispute_litigation": "An adversarial legal proceeding, or the credible threat of one.",
+              "employment_law": "Legal questions about the employment relationship itself.",
+              "insufficient_detail": "The item clearly belongs to this division, but it does not say enough to pick one group over the others."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "enough_for_group_legal": {
+            "type": "noul",
+            "instructions": "Does the note say enough to choose one group inside the division over the others?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "legal_compliance"
+        },
+        "l2_group_or_backoff": {
+          "type": "choice",
+          "expected": "insufficient_detail"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "enough_for_group_legal": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "beam-billing-versus-technical",
+      "difficulty": "medium",
+      "rationale": "Customers contesting the invoices they received is an invoice dispute; the engineering work already has its own ticket, so the technical branch prunes. The cause is not yet known, so no category inside the group is determinable.",
+      "request": {
+        "state": "Escalation from the payments team: since the 4.1 release, a subset of customers on annual plans have received invoices with the wrong amount. We have not yet established whether the figure is wrong because the invoice was built from stale seat counts or because tax was applied twice; both are open. Engineering already holds a separate ticket for the code defect and asks that no second engineering item be raised. What is needed here is the customer-facing handling: those customers are contesting the invoices they received and are asking for corrected ones.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_frontier_billing_finance": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Billing and Finance division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "invoice_disputes": "A customer contests what an invoice or a completed charge says.",
+              "subscription_lifecycle": "Changes to a subscription: upgrades, cancellations, trials, and seat counts.",
+              "payment_processing": "The mechanics of moving money: cards, card-network disputes, payouts, bank mandates.",
+              "procurement_ap": "Money the company owes to suppliers and employees.",
+              "financial_reporting": "Internal and statutory reporting of financial results.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "l2_frontier_technical_engineering": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "customers_contesting_invoices": {
+            "type": "noul",
+            "instructions": "Does the escalation state that customers are contesting their invoices?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "billing_finance"
+        },
+        "l2_frontier_billing_finance": {
+          "type": "choice",
+          "expected": "invoice_disputes"
+        },
+        "l2_frontier_technical_engineering": {
+          "type": "choice",
+          "expected": "none_applicable"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "customers_contesting_invoices": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "beam-clinical-versus-scheduling",
+      "difficulty": "hard",
+      "rationale": "The calendar is settled and explicitly needs nothing further, so the scheduling branch prunes; the open work is patient access, but the item leaves both the coverage question and the referral question open.",
+      "request": {
+        "state": "Front desk handoff, clinic 12: the patient arrived for her 10:00 slot and could not be seen. The desk could not confirm whether her plan is still active after her employer changed carriers, and separately the referral on file may have expired last month. Both questions are still open and either one on its own would have stopped the visit. The scheduling team has already rebooked her for the 26th and nothing further is needed on the calendar. Intake is asked to resolve the outstanding question before that date.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_frontier_clinical_admin": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Clinical Administration division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "prior_authorization": "Getting a payer to approve a service before or after it is delivered.",
+              "claims_coding": "The codes on a submitted claim and the payer edits applied to them.",
+              "records_management": "Custody of the medical record: release, amendment, correction, retention.",
+              "patient_access": "Services that let a patient reach care: eligibility, referrals, financial help, language.",
+              "clinical_supply": "Physical goods used in care: devices, drugs, cold chain, controlled substances.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "l2_frontier_scheduling_workforce": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Scheduling and Workforce division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "shift_operations": "Who works which shift on the published roster.",
+              "appointment_booking": "The customer or patient appointment calendar itself.",
+              "time_attendance": "The recorded hours a worker actually worked.",
+              "leave_absence": "Planned or protected time away from work.",
+              "capacity_planning": "How much staffed capacity future periods will need.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "appointment_already_rebooked": {
+            "type": "noul",
+            "instructions": "Does the handoff state that the appointment has already been rebooked?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "l2_frontier_clinical_admin": {
+          "type": "choice",
+          "expected": "patient_access"
+        },
+        "l2_frontier_scheduling_workforce": {
+          "type": "choice",
+          "expected": "none_applicable"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "appointment_already_rebooked": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "beam-security-versus-technical",
+      "difficulty": "easy",
+      "rationale": "An active investigation into a suspicious sign-in is incident response; the item states no service is degraded, so the technical branch prunes, and forensics have not yet said which category applies.",
+      "request": {
+        "state": "Security alert under investigation: an administrator account signed in at 03:12 from a country where that person has never travelled, and the session opened a file share it had never touched. We do not yet know whether the password was stolen from the user or whether the laptop itself is infected and drove the session; forensics report tomorrow. Engineering confirms that every service is healthy, no request is failing, and no outage or slowdown has been observed.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "l2_frontier_security_privacy": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Security and Privacy division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "access_management": "Who holds which credential or role in our systems.",
+              "incident_response": "An active or suspected security event under investigation.",
+              "data_privacy": "An individual exercising statutory rights over their own personal data.",
+              "vendor_security": "The security posture of third parties we send data to.",
+              "device_endpoint": "Laptops, phones, and other endpoints we manage.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "l2_frontier_technical_engineering": {
+            "type": "choice",
+            "instructions": "The item has already been routed to the Technical and Engineering division. Choose the group inside that division that owns it.",
+            "criteria": {
+              "infra_outage": "Loss or degradation of underlying infrastructure: network, naming, certificates, facility power.",
+              "data_pipeline": "Batch or streaming data movement: ingestion, structure, backfills, duplication.",
+              "api_integration": "The boundary between our service and an external caller or callee.",
+              "client_app_defect": "Incorrect behaviour of the end-user application on the device.",
+              "performance_capacity": "Behaviour that is correct but too slow, or that has exhausted a resource limit.",
+              "none_applicable": "No group in this division owns the item, so this branch should be pruned."
+            }
+          },
+          "depth": {
+            "type": "score",
+            "instructions": "How deep into the taxonomy does the item itself let a careful reader go, using only what the item states?",
+            "criteria": [
+              "Only the division is determinable; the item does not say which group inside it applies.",
+              "The division and the group are determinable, but not the specific category inside the group.",
+              "The division, the group, and the specific category are all determinable."
+            ]
+          },
+          "service_degradation_reported": {
+            "type": "noul",
+            "instructions": "Does the alert report that a service is degraded or failing?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "l2_frontier_security_privacy": {
+          "type": "choice",
+          "expected": "incident_response"
+        },
+        "l2_frontier_technical_engineering": {
+          "type": "choice",
+          "expected": "none_applicable"
+        },
+        "depth": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "service_degradation_reported": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rank-frontier-key-rotation",
+      "difficulty": "medium",
+      "rationale": "The blocking request is the rejected integration credential; the invoice copy is a real but secondary billing task, and nothing is asked of scheduling or clinical administration.",
+      "request": {
+        "state": "Partner integration email: after we rotated our API keys in your portal on Monday, every call from our middleware comes back 401 invalid credentials, and our nightly sync has not run since. The portal shows the new key as active. This is blocking us. Separately, and much less urgently, could someone send a copy of the February invoice to our finance address? We mislaid it. Nothing else is outstanding.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "r_technical": {
+            "type": "noul",
+            "instructions": "Does this item contain a request that the Technical and Engineering division must handle?"
+          },
+          "r_billing": {
+            "type": "noul",
+            "instructions": "Does this item contain a request that the Billing and Finance division must handle?"
+          },
+          "r_scheduling": {
+            "type": "noul",
+            "instructions": "Does this item contain a request that the Scheduling and Workforce division must handle?"
+          },
+          "r_clinical": {
+            "type": "noul",
+            "instructions": "Does this item contain a request that the Clinical Administration division must handle?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "technical_engineering"
+        },
+        "r_technical": {
+          "type": "noul",
+          "expected": true
+        },
+        "r_billing": {
+          "type": "noul",
+          "expected": true
+        },
+        "r_scheduling": {
+          "type": "noul",
+          "expected": false
+        },
+        "r_clinical": {
+          "type": "noul",
+          "expected": false
+        }
+      },
+      "rankings": [
+        {
+          "name": "division-frontier",
+          "question_ids": [
+            "r_technical",
+            "r_billing",
+            "r_scheduling",
+            "r_clinical"
+          ],
+          "expected_order": [
+            "r_technical",
+            "r_billing"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rank-frontier-device-recall",
+      "difficulty": "hard",
+      "rationale": "The recall is clinical supply work; counsel has already confirmed no filing is owed, the units are not being sent back for refund or warranty, and no security matter arises.",
+      "request": {
+        "state": [
+          {
+            "source": "manufacturer notice",
+            "text": "Class II recall of infusion set lot J-4420 due to a connector that can loosen. Quarantine all affected units and record the count held."
+          },
+          {
+            "source": "counsel",
+            "text": "Reviewed. No regulator filing is owed by us for a manufacturer-initiated recall of this class, and no legal matter should be opened."
+          },
+          {
+            "source": "materials management",
+            "text": "The manufacturer will collect and credit the units directly under the recall; we are not raising a return, an exchange, or a warranty claim through the storeroom."
+          },
+          {
+            "source": "security",
+            "text": "No patient or staff data is involved and no system access is affected."
+          }
+        ],
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "r_clinical": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Clinical Administration division must handle?"
+          },
+          "r_legal": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Legal and Compliance division must handle?"
+          },
+          "r_commerce": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Commerce and Fulfillment division must handle?"
+          },
+          "r_security": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Security and Privacy division must handle?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "clinical_admin"
+        },
+        "r_clinical": {
+          "type": "noul",
+          "expected": true
+        },
+        "r_legal": {
+          "type": "noul",
+          "expected": false
+        },
+        "r_commerce": {
+          "type": "noul",
+          "expected": false
+        },
+        "r_security": {
+          "type": "noul",
+          "expected": false
+        }
+      },
+      "rankings": [
+        {
+          "name": "division-frontier",
+          "question_ids": [
+            "r_clinical",
+            "r_legal",
+            "r_commerce",
+            "r_security"
+          ],
+          "expected_order": [
+            "r_clinical"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rank-frontier-leaver-cleanup",
+      "difficulty": "easy",
+      "rationale": "The blocking work is the still-active account and the unreturned laptop; the outstanding expense claim is a real secondary finance task, and the item states nothing is owed to legal or commerce.",
+      "request": {
+        "state": "Note from the people team: Marcus left on 28 February. His administrator account is still active and signed in last week, and his company laptop has not come back. Security cleanup is the blocking item here. Secondarily, finance should settle his outstanding travel expense claim of 212.40 EUR from January. His exit was amicable, counsel has confirmed there is no employment matter to review, and he held no marketplace or customer order responsibilities.",
+        "questions": {
+          "l1_division": {
+            "type": "choice",
+            "instructions": "Route this intake item to exactly one division of the work taxonomy. Choose the division that owns the primary request the item is making. Judge the request itself, not the vocabulary it happens to use.",
+            "criteria": {
+              "clinical_admin": "Administration of patient care: payer authorizations, claim coding, medical records custody, patient access services, and clinical supply. Excludes staff rosters and appointment calendars.",
+              "commerce_fulfillment": "Retail orders, shipment of goods, returns and warranty, catalog listings, and third-party marketplace sellers.",
+              "billing_finance": "Amounts charged, owed, paid, refunded, or reported as money. Excludes the software defects that make a billing system misbehave, and excludes fees charged to marketplace sellers.",
+              "technical_engineering": "Defects, outages, and integration failures in software or infrastructure the company builds or operates. Excludes disputes about what a customer was charged.",
+              "scheduling_workforce": "Staff shifts, appointment calendars, time and attendance records, leave, and capacity planning.",
+              "legal_compliance": "Contracts, intellectual property, regulator obligations, and legal disputes. Excludes privacy-law rights requests made by individuals about their own data.",
+              "security_privacy": "Account access, security incidents, personal-data rights requests made under a data-protection law, vendor security, and device security.",
+              "other_unclassified": "The item belongs to none of the divisions above."
+            }
+          },
+          "r_security": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Security and Privacy division must handle?"
+          },
+          "r_billing": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Billing and Finance division must handle?"
+          },
+          "r_legal": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Legal and Compliance division must handle?"
+          },
+          "r_commerce": {
+            "type": "noul",
+            "instructions": "Does this item contain work that the Commerce and Fulfillment division must handle?"
+          }
+        }
+      },
+      "targets": {
+        "l1_division": {
+          "type": "choice",
+          "expected": "security_privacy"
+        },
+        "r_security": {
+          "type": "noul",
+          "expected": true
+        },
+        "r_billing": {
+          "type": "noul",
+          "expected": true
+        },
+        "r_legal": {
+          "type": "noul",
+          "expected": false
+        },
+        "r_commerce": {
+          "type": "noul",
+          "expected": false
+        }
+      },
+      "rankings": [
+        {
+          "name": "division-frontier",
+          "question_ids": [
+            "r_security",
+            "r_billing",
+            "r_legal",
+            "r_commerce"
+          ],
+          "expected_order": [
+            "r_security",
+            "r_billing"
+          ]
+        }
+      ]
+    }
+  ]
+}

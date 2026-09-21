@@ -1,0 +1,754 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Local System One API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "summary": "Models",
+        "operationId": "models_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Models V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/systemone": {
+      "post": {
+        "summary": "Systemone",
+        "operationId": "systemone_v1_systemone_post",
+        "parameters": [
+          {
+            "name": "diagnostics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Diagnostics"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemOneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemOneResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChoiceAnswer": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "choice",
+            "title": "Type",
+            "default": "choice"
+          },
+          "choice": {
+            "type": "string",
+            "title": "Choice"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Probabilities"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "choice",
+          "probabilities",
+          "confidence"
+        ],
+        "title": "ChoiceAnswer"
+      },
+      "ChoiceQuestion": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "choice",
+            "title": "Type"
+          },
+          "instructions": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": "object",
+            "maxProperties": 255,
+            "minProperties": 2,
+            "title": "Criteria"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "criteria"
+        ],
+        "title": "ChoiceQuestion"
+      },
+      "Entry": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "object"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "FullVocabularyArgmax": {
+        "properties": {
+          "token_id": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Token Id"
+          },
+          "logit": {
+            "type": "number",
+            "title": "Logit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token_id",
+          "logit"
+        ],
+        "title": "FullVocabularyArgmax"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JsonValue-Input": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "JsonValue-Output": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "NoulAnswer": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "noul",
+            "title": "Type",
+            "default": "noul"
+          },
+          "noul": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Noul"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "noul"
+        ],
+        "title": "NoulAnswer"
+      },
+      "NoulCriteria": {
+        "properties": {
+          "true": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "false": {
+            "$ref": "#/components/schemas/Entry"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NoulCriteria"
+      },
+      "NoulQuestion": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "noul",
+            "title": "Type"
+          },
+          "instructions": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "criteria": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoulCriteria"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "NoulQuestion"
+      },
+      "QuestionDiagnostics": {
+        "properties": {
+          "raw_label_logits": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Raw Label Logits"
+          },
+          "token_mapping": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Token Mapping"
+          },
+          "coverage": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverage"
+          },
+          "full_vocabulary_argmax": {
+            "$ref": "#/components/schemas/FullVocabularyArgmax"
+          },
+          "conditional_score_semantics": {
+            "type": "string",
+            "const": "softmax_over_allowed_single_token_labels_v1",
+            "title": "Conditional Score Semantics",
+            "default": "softmax_over_allowed_single_token_labels_v1"
+          },
+          "confidence_formula": {
+            "type": "string",
+            "const": "max_probability_v1",
+            "title": "Confidence Formula",
+            "default": "max_probability_v1"
+          },
+          "prompt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prompt Sha256"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "cache_cleared": {
+            "type": "boolean",
+            "title": "Cache Cleared"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Prompt Tokens"
+          },
+          "processed_tokens": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Processed Tokens"
+          },
+          "reused_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Reused Tokens"
+          },
+          "timing_ms": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Timing Ms"
+          },
+          "model_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Sha256"
+          },
+          "runtime_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Runtime Sha256"
+          },
+          "execution_mode": {
+            "type": "string",
+            "const": "full",
+            "title": "Execution Mode"
+          },
+          "generated_tokens": {
+            "type": "integer",
+            "const": 0,
+            "title": "Generated Tokens"
+          },
+          "callbacks_enabled": {
+            "type": "boolean",
+            "const": false,
+            "title": "Callbacks Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "raw_label_logits",
+          "token_mapping",
+          "coverage",
+          "full_vocabulary_argmax",
+          "prompt_sha256",
+          "prompt_version",
+          "cache_cleared",
+          "prompt_tokens",
+          "processed_tokens",
+          "reused_tokens",
+          "timing_ms",
+          "model_sha256",
+          "runtime_sha256",
+          "execution_mode",
+          "generated_tokens",
+          "callbacks_enabled"
+        ],
+        "title": "QuestionDiagnostics"
+      },
+      "ScoreAnswer": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "score",
+            "title": "Type",
+            "default": "score"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "legend": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreEntry-Output"
+            },
+            "type": "object",
+            "title": "Legend"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Probabilities"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "score",
+          "legend",
+          "probabilities",
+          "confidence"
+        ],
+        "title": "ScoreAnswer"
+      },
+      "ScoreEntry-Input": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "object"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "ScoreEntry-Output": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "type": "object"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "ScoreQuestion": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "score",
+            "title": "Type"
+          },
+          "instructions": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreEntry-Input"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 2,
+            "title": "Criteria"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "criteria"
+        ],
+        "title": "ScoreQuestion"
+      },
+      "State": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "object"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue-Input"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "SystemOneRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "local-gemma-systemone-v1"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "questions": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NoulQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ChoiceQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreQuestion"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "choice": "#/components/schemas/ChoiceQuestion",
+                  "noul": "#/components/schemas/NoulQuestion",
+                  "score": "#/components/schemas/ScoreQuestion"
+                }
+              }
+            },
+            "type": "object",
+            "maxProperties": 32,
+            "minProperties": 1,
+            "title": "Questions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "questions"
+        ],
+        "title": "SystemOneRequest"
+      },
+      "SystemOneResponse": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "const": "local-gemma-systemone-v1",
+            "title": "Model"
+          },
+          "answers": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ChoiceAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/NoulAnswer"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "choice": "#/components/schemas/ChoiceAnswer",
+                  "noul": "#/components/schemas/NoulAnswer",
+                  "score": "#/components/schemas/ScoreAnswer"
+                }
+              }
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/QuestionDiagnostics"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "answers",
+          "usage"
+        ],
+        "title": "SystemOneResponse"
+      },
+      "Usage": {
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "const": 0,
+            "title": "Output Tokens",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "input_tokens"
+        ],
+        "title": "Usage"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

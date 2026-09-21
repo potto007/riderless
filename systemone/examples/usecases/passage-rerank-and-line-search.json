@@ -1,0 +1,4582 @@
+{
+  "suite": "passage-rerank-and-line-search",
+  "family": "Reranking and in-document search",
+  "source": [
+    "Re-ranking (rerank)",
+    "Line-by-line search (semantic_find)",
+    "Ranking and search row of the build-spec pattern table",
+    "Fan-out pattern"
+  ],
+  "description": "Measures two result semantics the interface keeps apart: a Noul battery whose P(true) values are compared across candidates to order a shortlist, and a normalised Choice over tagged line or candidate ids paired with an independent Noul that says whether an answer is present at all. Headline metrics are top-1 accuracy and MRR from the rankings blocks, which are threshold free, plus accuracy at 0.5 on the standalone presence Nouls of the absent-answer cases. The per-candidate Noul targets inside ranking cases are ordinal evidence only: their absolute level is uncalibrated and they must not be pooled with the Choice distribution or scored as independent booleans. Every ranking case has exactly one passage that entails the answer on its own, so each expected_order is an unambiguous top-1 prefix and no scorer has to break a tie. This suite does not measure retrieval recall, generation, citation formatting, or probability calibration outside the absent-answer cases. The 30-candidate and 218-line fan-outs of the original workloads are sampled down to at most 16 lines and 5 candidates to respect the 26-option Choice cap, the 32-question request cap, and the 2048-token context.",
+  "cases": [
+    {
+      "name": "rerank-return-window-defective-blender",
+      "difficulty": "easy",
+      "rationale": "Only p1 states a return window; the other passages cover warranty length, refund timing, and store credit.",
+      "request": {
+        "state": {
+          "query": "How many days after delivery can a customer start a return for a defective blender?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Returns for defective kitchen appliances must be started within 45 days of delivery. After that window the customer is sent to the manufacturer warranty."
+            },
+            {
+              "id": "p2",
+              "text": "The blender product page lists a two year manufacturer warranty and a 700 watt motor."
+            },
+            {
+              "id": "p3",
+              "text": "Refunds reach the original payment method within five business days after the returned item is scanned at the warehouse."
+            },
+            {
+              "id": "p4",
+              "text": "Store credit issued for opened food items never expires."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many days after delivery can a customer start a return for a defective blender?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many days after delivery can a customer start a return for a defective blender?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many days after delivery can a customer start a return for a defective blender?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many days after delivery can a customer start a return for a defective blender?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "How many days after delivery can a customer start a return for a defective blender?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-franchise-report-deadline",
+      "difficulty": "easy",
+      "rationale": "Only p3 gives a due date for the franchise report; the rest are unrelated finance operations notes.",
+      "request": {
+        "state": {
+          "query": "What is the filing deadline for the quarterly state franchise report?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Payroll tax deposits leave the operating account every second Wednesday."
+            },
+            {
+              "id": "p2",
+              "text": "The finance team closes the general ledger three days after quarter end."
+            },
+            {
+              "id": "p3",
+              "text": "The state franchise report is filed by the last business day of the month that follows the close of each quarter."
+            },
+            {
+              "id": "p4",
+              "text": "The shared drive is reorganised every January by the records clerk."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the filing deadline for the quarterly state franchise report?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the filing deadline for the quarterly state franchise report?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the filing deadline for the quarterly state franchise report?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the filing deadline for the quarterly state franchise report?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What is the filing deadline for the quarterly state franchise report?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-swollen-battery-first-step",
+      "difficulty": "easy",
+      "rationale": "Only p4 says what to do about a swollen pack; the others cover capacity, sleeves, and shipping times.",
+      "request": {
+        "state": {
+          "query": "What should a customer do first if a laptop battery is swollen?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Laptop batteries lose about 20 percent of capacity after 500 charge cycles."
+            },
+            {
+              "id": "p2",
+              "text": "Laptop sleeves are sold in 13, 14 and 16 inch sizes."
+            },
+            {
+              "id": "p3",
+              "text": "Standard shipping for accessories takes three to five business days."
+            },
+            {
+              "id": "p4",
+              "text": "If a battery pack is visibly swollen, stop using the device at once, do not charge it, and book a service drop off. Swollen packs are never sent by post."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What should a customer do first if a laptop battery is swollen?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What should a customer do first if a laptop battery is swollen?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What should a customer do first if a laptop battery is swollen?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What should a customer do first if a laptop battery is swollen?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What should a customer do first if a laptop battery is swollen?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": true
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-absent-overnight-visitor-parking",
+      "difficulty": "easy",
+      "rationale": "No candidate mentions visitor parking at all, so every per candidate Noul and the set level Noul are false. This case tests absolute calibration.",
+      "request": {
+        "state": {
+          "query": "Where do overnight visitors park on the north campus?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "The campus shuttle runs every 20 minutes between 07:00 and 19:00."
+            },
+            {
+              "id": "p2",
+              "text": "Bicycles must be registered at the facilities desk before storage."
+            },
+            {
+              "id": "p3",
+              "text": "The science library closes at 22:00 during term and 18:00 in summer."
+            },
+            {
+              "id": "p4",
+              "text": "Meal plan changes are accepted during the first two weeks of term."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Where do overnight visitors park on the north campus?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Where do overnight visitors park on the north campus?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Where do overnight visitors park on the north campus?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Where do overnight visitors park on the north campus?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "Where do overnight visitors park on the north campus?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rerank-production-vpn-second-factor",
+      "difficulty": "medium",
+      "rationale": "p1 states the production requirement. p2 is the same jargon about the staging gateway and p4 is a genuine partial that only requires some second factor.",
+      "request": {
+        "state": {
+          "query": "Which second factor must engineers use when connecting to the production VPN?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Production VPN sessions accept only hardware security keys as the second factor. Software one time codes are refused by the production gateway."
+            },
+            {
+              "id": "p2",
+              "text": "The staging VPN gateway accepts software one time codes as the second factor for engineers and contractors."
+            },
+            {
+              "id": "p3",
+              "text": "VPN client version 4.2 fixed a reconnect loop on macOS laptops."
+            },
+            {
+              "id": "p4",
+              "text": "All staff must enrol at least one second factor before any VPN access is granted."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which second factor must engineers use when connecting to the production VPN?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which second factor must engineers use when connecting to the production VPN?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which second factor must engineers use when connecting to the production VPN?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which second factor must engineers use when connecting to the production VPN?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "Which second factor must engineers use when connecting to the production VPN?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-prior-auth-standard-turnaround",
+      "difficulty": "medium",
+      "rationale": "p2 gives the standard turnaround. p4 repeats the same jargon for expedited requests, which is the neighbouring fact, not the asked one.",
+      "request": {
+        "state": {
+          "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Physical therapy visits beyond the twelfth require a progress note."
+            },
+            {
+              "id": "p2",
+              "text": "A standard prior authorization request for outpatient physical therapy is decided within 14 calendar days of a complete submission."
+            },
+            {
+              "id": "p3",
+              "text": "Prior authorization is not required for the first evaluation visit of an episode of care."
+            },
+            {
+              "id": "p4",
+              "text": "An expedited prior authorization request for outpatient physical therapy is decided within 72 hours of a complete submission."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "How long does the insurer have to decide a standard prior authorization request for outpatient physical therapy?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-absent-compressed-week-overtime",
+      "difficulty": "medium",
+      "rationale": "Every candidate is a payroll note about something else, so all Nouls are false even though the passages share the payroll vocabulary of the query.",
+      "request": {
+        "state": {
+          "query": "How is overtime calculated for employees on the compressed four day schedule?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Holiday hours accrue at 1.5 hours per completed pay period."
+            },
+            {
+              "id": "p2",
+              "text": "Timesheets are submitted by 17:00 on the Friday that closes the period."
+            },
+            {
+              "id": "p3",
+              "text": "The payroll vendor migration completes in March and freezes edits for a week."
+            },
+            {
+              "id": "p4",
+              "text": "The transit stipend is paid with the second cheque of each month."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How is overtime calculated for employees on the compressed four day schedule?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How is overtime calculated for employees on the compressed four day schedule?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How is overtime calculated for employees on the compressed four day schedule?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How is overtime calculated for employees on the compressed four day schedule?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "How is overtime calculated for employees on the compressed four day schedule?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rerank-sea-freight-lithium-document",
+      "difficulty": "medium",
+      "rationale": "p4 covers the asked mode of transport. p1 is the same dangerous goods jargon for air freight and p3 is a real but partial customs requirement.",
+      "request": {
+        "state": {
+          "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Air shipments of lithium batteries need a shipper's declaration for dangerous goods and a state of charge attestation."
+            },
+            {
+              "id": "p2",
+              "text": "Pallets are wrapped in black stretch film at the Rotterdam hub."
+            },
+            {
+              "id": "p3",
+              "text": "Chilean customs asks for a Spanish language commercial invoice for all consumer electronics."
+            },
+            {
+              "id": "p4",
+              "text": "Sea shipments of lithium batteries to Chile travel with a signed dangerous goods declaration in the carrier's file before the container is sealed."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "Which document must accompany a pallet of lithium batteries shipped by sea to Chile?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": true
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-escrow-analysis-cadence",
+      "difficulty": "medium",
+      "rationale": "p2 states the yearly cadence. p1 is the off cycle analysis, which shares the escrow analysis wording but answers a different question.",
+      "request": {
+        "state": {
+          "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "A borrower may ask for an off cycle escrow analysis after a property tax reassessment, and the servicer answers within 30 days."
+            },
+            {
+              "id": "p2",
+              "text": "The servicer analyses each escrow account once a year in the anniversary month of closing and adjusts the monthly payment from the next billing cycle."
+            },
+            {
+              "id": "p3",
+              "text": "Escrow shortages under 50 dollars are spread over the next twelve payments."
+            },
+            {
+              "id": "p4",
+              "text": "Rate changes on adjustable loans are notified 60 days in advance."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "When is a mortgage escrow account analysed and the monthly payment adjusted?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-absent-guest-wifi-password",
+      "difficulty": "medium",
+      "rationale": "Three candidates repeat third floor and guest network vocabulary, but no candidate contains a password, so every Noul is false.",
+      "request": {
+        "state": {
+          "query": "What is the guest wifi password for the third floor conference rooms?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "The third floor conference rooms are booked through the room calendar and seat up to twelve people."
+            },
+            {
+              "id": "p2",
+              "text": "Wired ports in the training room are patched to the guest VLAN."
+            },
+            {
+              "id": "p3",
+              "text": "Visitor badges are returned to reception at the end of each day."
+            },
+            {
+              "id": "p4",
+              "text": "Catering for the third floor rooms is ordered before noon on the day."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the guest wifi password for the third floor conference rooms?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the guest wifi password for the third floor conference rooms?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the guest wifi password for the third floor conference rooms?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the guest wifi password for the third floor conference rooms?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What is the guest wifi password for the third floor conference rooms?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rerank-page-escalation-timer",
+      "difficulty": "medium",
+      "rationale": "p3 gives the primary to secondary timer. p1 uses nearly the same sentence for the secondary to manager step, which is the neighbouring fact.",
+      "request": {
+        "state": {
+          "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "If the secondary on call does not acknowledge within 15 minutes, the page escalates to the engineering manager."
+            },
+            {
+              "id": "p2",
+              "text": "Severity one incidents open a video bridge as soon as they are declared."
+            },
+            {
+              "id": "p3",
+              "text": "A page that the primary on call has not acknowledged within 10 minutes escalates automatically to the secondary on call engineer."
+            },
+            {
+              "id": "p4",
+              "text": "On call shifts rotate every Wednesday at 10:00 local time."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "After how long without acknowledgement does a page escalate to the secondary on call engineer?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-supplier-invoice-portal-cutoff",
+      "difficulty": "medium",
+      "rationale": "p1 gives the submission cutoff asked for. p4 repeats the same portal wording for approvals, a neighbouring step in the same workflow.",
+      "request": {
+        "state": {
+          "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Invoices entered in the supplier portal before the 20th of a month are paid in that month's payment run."
+            },
+            {
+              "id": "p2",
+              "text": "Supplier bank details are changed only after a callback to a known number."
+            },
+            {
+              "id": "p3",
+              "text": "The portal rejects attachments larger than 10 megabytes."
+            },
+            {
+              "id": "p4",
+              "text": "Cost centre owners approve portal invoices before the 25th of the month so the run can be prepared."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "By when must a supplier submit an invoice in the portal to be paid in the same month?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-sublet-without-written-consent",
+      "difficulty": "hard",
+      "rationale": "p1 answers by paraphrase: a transfer of occupancy for any period needs prior written approval. p3 quotes the query wording about a storage locker, which is a different subject.",
+      "request": {
+        "state": {
+          "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Any transfer of occupancy of the unit to a third party, for any period however short, takes effect only if the landlord has approved it in writing beforehand."
+            },
+            {
+              "id": "p2",
+              "text": "The tenant may keep one cat under 12 pounds with no extra deposit."
+            },
+            {
+              "id": "p3",
+              "text": "The tenant may sublet storage locker B to another resident of the building without the landlord's written consent."
+            },
+            {
+              "id": "p4",
+              "text": "Requests for landlord consent are answered within 14 days of receipt."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "May the tenant sublet the unit for one summer month without the landlord's written consent?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-consulting-invoice-late-fee",
+      "difficulty": "hard",
+      "rationale": "p4 answers by paraphrase: 20 days past due is more than a fortnight, so the 1.5 percent monthly surcharge applies. p2 quotes the query wording for equipment rental, a different product line with a different trigger.",
+      "request": {
+        "state": {
+          "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Consulting invoices are due 30 days after the issue date."
+            },
+            {
+              "id": "p2",
+              "text": "A late fee of 1.5 percent applies to unpaid equipment rental invoices from the first day past due."
+            },
+            {
+              "id": "p3",
+              "text": "Invoices above 10,000 dollars need a purchase order number on the face."
+            },
+            {
+              "id": "p4",
+              "text": "Consulting charges left unsettled more than a fortnight after the due date accrue a monthly surcharge of 1.5 percent of the outstanding balance."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What late fee applies to an unpaid consulting invoice that is 20 days past due?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": true
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-free-tier-rate-limit-behaviour",
+      "difficulty": "hard",
+      "rationale": "p2 answers by paraphrase: a key on the no cost plan is refused with 429 and nothing is queued. p1 quotes the query wording for enterprise keys and p4 states the limit but not what happens when it is exceeded.",
+      "request": {
+        "state": {
+          "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Requests from an enterprise key that exceed the per minute limit are queued for up to two seconds before they are served."
+            },
+            {
+              "id": "p2",
+              "text": "Traffic from a key on the no cost plan beyond its minute allowance is refused with status 429 and a Retry-After header. Nothing is held for later delivery."
+            },
+            {
+              "id": "p3",
+              "text": "API keys are rotated from the dashboard and the old key dies after an hour."
+            },
+            {
+              "id": "p4",
+              "text": "Free tier keys are limited to 60 requests per minute per project."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What happens to requests from a free tier key that exceed the per minute limit?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-missed-dose-withdrawal-rule",
+      "difficulty": "hard",
+      "rationale": "Only p2 gives the number of missed doses that ends enrolment. p1 copies the same protocol sentence about missed visits, not doses, and p5 says participation can end without giving the number, so it is a partial.",
+      "request": {
+        "state": {
+          "query": "How many missed doses in a row end a participant's enrolment?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "A participant who misses more than three consecutive study visits is rescheduled once before any withdrawal decision."
+            },
+            {
+              "id": "p2",
+              "text": "A participant who misses more than three consecutive scheduled doses is withdrawn from the study."
+            },
+            {
+              "id": "p3",
+              "text": "Doses are taken once daily with food at about the same hour."
+            },
+            {
+              "id": "p4",
+              "text": "Site staff telephone each participant weekly during the first month."
+            },
+            {
+              "id": "p5",
+              "text": "If you skip study doses repeatedly your participation may end; the protocol sets out how many in a row are allowed."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p5": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "candidate_id": "p5",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "How many missed doses in a row end a participant's enrolment?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p5": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4",
+            "cand_p5"
+          ],
+          "expected_order": [
+            "cand_p2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-treadmill-warranty-on-resale",
+      "difficulty": "hard",
+      "rationale": "p3 answers by paraphrase: coverage stays with the original purchaser and ends on resale. p1 reuses the query wording for a change of address, a neighbouring fact, and p4 is a real but partial registration rule.",
+      "request": {
+        "state": {
+          "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "The warranty continues if the treadmill is moved to a new address in the same country, provided the move is registered within 30 days."
+            },
+            {
+              "id": "p2",
+              "text": "Treadmill assembly at the customer's home is an 89 dollar service."
+            },
+            {
+              "id": "p3",
+              "text": "Cover on fitness equipment stays with the person who bought it new and lapses when the machine changes hands. A later owner has no claim."
+            },
+            {
+              "id": "p4",
+              "text": "Warranty registration must be completed within 30 days of delivery."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "Does the treadmill warranty continue if the machine is sold to a new owner?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-deposit-deduction-for-scuffs",
+      "difficulty": "hard",
+      "rationale": "Only p2 settles the question: repainting for everyday scuffs is never charged to the deposit. p1 quotes the query wording for unauthorised painting, a different situation, and p4 states the ordinary wear test but defers its definition to another section, so it cannot answer on its own.",
+      "request": {
+        "state": {
+          "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "The landlord may deduct the cost of repainting from the security deposit where the tenant has painted a wall without permission."
+            },
+            {
+              "id": "p2",
+              "text": "Repainting for scuff marks left by everyday use is the landlord's own expense and is never charged against the deposit."
+            },
+            {
+              "id": "p3",
+              "text": "An itemised deduction statement is sent within 21 days of move out."
+            },
+            {
+              "id": "p4",
+              "text": "A deposit may be applied only to damage beyond ordinary wear, as ordinary wear is defined in section 12 of this lease."
+            },
+            {
+              "id": "p5",
+              "text": "The deposit is held in a separate account at a licensed bank."
+            }
+          ]
+        },
+        "questions": {
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p5": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "candidate_id": "p5",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "May the landlord deduct the cost of repainting scuffed walls from the security deposit?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p5": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4",
+            "cand_p5"
+          ],
+          "expected_order": [
+            "cand_p2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "find-etl-restart-command",
+      "difficulty": "easy",
+      "rationale": "L08 is the only line that gives a restart command for the loader.",
+      "request": {
+        "state": {
+          "document": "Runbook: nightly ETL job",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Owner: data platform team, pager rotation dp-primary."
+            },
+            {
+              "id": "L02",
+              "text": "The nightly job starts at 01:15 UTC from the scheduler."
+            },
+            {
+              "id": "L03",
+              "text": "Stage one extracts from the billing replica."
+            },
+            {
+              "id": "L04",
+              "text": "Stage two writes parquet files to the staging bucket."
+            },
+            {
+              "id": "L05",
+              "text": "An alert fires if the job is still running at 05:00 UTC."
+            },
+            {
+              "id": "L06",
+              "text": "Row count drift above 5 percent raises a warning, not a page."
+            },
+            {
+              "id": "L07",
+              "text": "Check the staging table is empty before any rerun."
+            },
+            {
+              "id": "L08",
+              "text": "Restart the loader with: etl restart --stage load --date <run date>."
+            },
+            {
+              "id": "L09",
+              "text": "The dashboard for the job is in the data platform metrics folder."
+            },
+            {
+              "id": "L10",
+              "text": "Historical run logs are kept for 30 days."
+            },
+            {
+              "id": "L11",
+              "text": "Escalate to the warehouse team if the load fails twice in a row."
+            },
+            {
+              "id": "L12",
+              "text": "Post an update in the data-status channel once the run is green."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line gives the command to restart the loader after a failed nightly run?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line gives the command to restart the loader after a failed nightly run?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L08"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-lockout-key-custody",
+      "difficulty": "easy",
+      "rationale": "L05 is the only line about who holds the padlock key during the work.",
+      "request": {
+        "state": {
+          "document": "Press maintenance card",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Isolate the press at the wall disconnect before any guard is opened."
+            },
+            {
+              "id": "L02",
+              "text": "Fit the personal padlock to the disconnect hasp."
+            },
+            {
+              "id": "L03",
+              "text": "Attach the danger tag with the technician's name and the date."
+            },
+            {
+              "id": "L04",
+              "text": "Test the start button to confirm the press is dead."
+            },
+            {
+              "id": "L05",
+              "text": "The padlock key stays in the pocket of the technician doing the work until the guard is refitted."
+            },
+            {
+              "id": "L06",
+              "text": "Ram blocks are inserted before anyone reaches into the die area."
+            },
+            {
+              "id": "L07",
+              "text": "Compressed air is bled down at the filter regulator."
+            },
+            {
+              "id": "L08",
+              "text": "Record the isolation in the maintenance log."
+            },
+            {
+              "id": "L09",
+              "text": "Only the technician who fitted a lock may remove it."
+            },
+            {
+              "id": "L10",
+              "text": "A supervisor countersigns the log at the end of the shift."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line states where the lockout padlock key is kept during maintenance?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line states where the lockout padlock key is kept during maintenance?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L05"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-sunday-store-hours",
+      "difficulty": "easy",
+      "rationale": "L03 is the only line with Sunday hours for the Elmwood store.",
+      "request": {
+        "state": {
+          "document": "Customer FAQ: store hours",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "All stores are shut on the first of January."
+            },
+            {
+              "id": "L02",
+              "text": "The Harbour store opens 08:00 to 21:00 every day."
+            },
+            {
+              "id": "L03",
+              "text": "Elmwood opens 11:00 to 17:00 on Sundays and 09:00 to 20:00 otherwise."
+            },
+            {
+              "id": "L04",
+              "text": "Click and collect counters close 30 minutes before the store."
+            },
+            {
+              "id": "L05",
+              "text": "The Elmwood car park is free for the first two hours."
+            },
+            {
+              "id": "L06",
+              "text": "Pharmacy counters keep their own posted hours."
+            },
+            {
+              "id": "L07",
+              "text": "Delivery slots are booked online up to two weeks ahead."
+            },
+            {
+              "id": "L08",
+              "text": "Gift cards are sold at every staffed till."
+            },
+            {
+              "id": "L09",
+              "text": "Lost property is held at the customer desk for 30 days."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line gives the Sunday opening hours of the Elmwood store?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line gives the Sunday opening hours of the Elmwood store?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L03"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-dublin-closure-date",
+      "difficulty": "easy",
+      "rationale": "L06 is the only line that carries a closure date for Dublin.",
+      "request": {
+        "state": {
+          "document": "All staff notice: spring bank holidays",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "This notice covers the European offices only."
+            },
+            {
+              "id": "L02",
+              "text": "Expense claims for April are submitted before the break."
+            },
+            {
+              "id": "L03",
+              "text": "The Munich office keeps normal hours through the period."
+            },
+            {
+              "id": "L04",
+              "text": "Support cover runs from the Manila office on all closure days."
+            },
+            {
+              "id": "L05",
+              "text": "Badge access continues to work on closure days."
+            },
+            {
+              "id": "L06",
+              "text": "The Dublin office is closed on Monday 4 May for the bank holiday."
+            },
+            {
+              "id": "L07",
+              "text": "Deliveries are held by building reception until the next working day."
+            },
+            {
+              "id": "L08",
+              "text": "Managers confirm holiday cover by the end of April."
+            },
+            {
+              "id": "L09",
+              "text": "Questions go to the workplace team mailbox."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line gives the date the Dublin office is closed for the bank holiday?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line gives the date the Dublin office is closed for the bank holiday?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L06"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-opened-monitor-restocking-fee",
+      "difficulty": "medium",
+      "rationale": "L09 gives the fee for opened monitors. L04 is the near duplicate for unopened monitors. The two fact score is level 1 because the document states the fee but never says who pays return shipping.",
+      "request": {
+        "state": {
+          "document": "Returns policy, consumer electronics",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Returns are started in the account portal under Orders."
+            },
+            {
+              "id": "L02",
+              "text": "A return label is issued once the request is approved."
+            },
+            {
+              "id": "L03",
+              "text": "Most items may be returned within 30 days of delivery."
+            },
+            {
+              "id": "L04",
+              "text": "Unopened monitors returned within 30 days carry no restocking fee."
+            },
+            {
+              "id": "L05",
+              "text": "Opened software and downloadable content cannot be returned."
+            },
+            {
+              "id": "L06",
+              "text": "Built to order workstations are final sale."
+            },
+            {
+              "id": "L07",
+              "text": "Refunds are issued to the original payment method."
+            },
+            {
+              "id": "L08",
+              "text": "Damaged in transit claims are handled by the carrier team."
+            },
+            {
+              "id": "L09",
+              "text": "Opened monitors carry a 15 percent restocking fee on the paid price."
+            },
+            {
+              "id": "L10",
+              "text": "Accessories in unopened packaging are exempt from any fee."
+            },
+            {
+              "id": "L11",
+              "text": "Fees are deducted from the refund, never billed separately."
+            },
+            {
+              "id": "L12",
+              "text": "Business accounts may negotiate different terms in their contract."
+            },
+            {
+              "id": "L13",
+              "text": "Gift returns are refunded as store credit."
+            },
+            {
+              "id": "L14",
+              "text": "Questions go to the returns desk on the support line."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line states the restocking fee for opened monitors?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line states the restocking fee for opened monitors?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "facts_present": {
+            "type": "score",
+            "instructions": {
+              "task": "Judge which of the two requested facts the document states.",
+              "query": "Which line states the restocking fee for opened monitors?",
+              "fact_one": "the restocking fee percentage for opened monitors",
+              "fact_two": "who pays return shipping on an opened monitor"
+            },
+            "criteria": [
+              "Neither of the two requested facts is stated.",
+              "Exactly one of the two requested facts is stated.",
+              "Both requested facts are stated."
+            ]
+          },
+          "single_line": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge how the answer sits in the document.",
+              "query": "Which line states the restocking fee for opened monitors?",
+              "decide": "Is the fact the query asks for stated inside one single line, rather than spread over several lines?"
+            },
+            "criteria": {
+              "true": "One line alone carries the fact.",
+              "false": "No single line carries the fact on its own."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L09"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "facts_present": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "single_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-auth-header-breaking-change",
+      "difficulty": "medium",
+      "rationale": "L11 is the 3.0.0 breaking change. L07 is the earlier deprecation warning and L13 is a later bug fix that names the same headers. Both requested facts are present on L11, so the two fact score is level 2.",
+      "request": {
+        "state": {
+          "document": "Changelog, gateway service",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "2.7.0 added request id propagation to downstream calls."
+            },
+            {
+              "id": "L02",
+              "text": "2.7.1 fixed a memory leak in the connection pool."
+            },
+            {
+              "id": "L03",
+              "text": "2.8.0 added a health endpoint at /healthz."
+            },
+            {
+              "id": "L04",
+              "text": "2.8.1 raised the default idle timeout to 75 seconds."
+            },
+            {
+              "id": "L05",
+              "text": "2.8.2 corrected a metrics label on upstream errors."
+            },
+            {
+              "id": "L06",
+              "text": "2.9.0 added per route rate limits."
+            },
+            {
+              "id": "L07",
+              "text": "2.9.1 added a deprecation warning when X-Auth-Token is used."
+            },
+            {
+              "id": "L08",
+              "text": "2.9.2 improved error text for malformed JSON bodies."
+            },
+            {
+              "id": "L09",
+              "text": "3.0.0 dropped support for TLS 1.1 on the public listener."
+            },
+            {
+              "id": "L10",
+              "text": "3.0.0 moved the admin API to a separate port."
+            },
+            {
+              "id": "L11",
+              "text": "3.0.0 stopped accepting the X-Auth-Token header; clients send Authorization: Bearer instead."
+            },
+            {
+              "id": "L12",
+              "text": "3.0.0 renamed the config key pool_size to connection_pool_size."
+            },
+            {
+              "id": "L13",
+              "text": "3.0.1 fixed a crash when the Authorization header was empty."
+            },
+            {
+              "id": "L14",
+              "text": "3.0.2 restored the legacy log format behind a flag."
+            },
+            {
+              "id": "L15",
+              "text": "3.1.0 added structured audit events."
+            },
+            {
+              "id": "L16",
+              "text": "3.1.1 reduced start up time on cold caches."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line records the breaking change to the authentication header in the 3.0 release?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "L15": null,
+              "L16": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line records the breaking change to the authentication header in the 3.0 release?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "facts_present": {
+            "type": "score",
+            "instructions": {
+              "task": "Judge which of the two requested facts the document states.",
+              "query": "Which line records the breaking change to the authentication header in the 3.0 release?",
+              "fact_one": "which header stopped being accepted in 3.0",
+              "fact_two": "which header clients must send instead"
+            },
+            "criteria": [
+              "Neither of the two requested facts is stated.",
+              "Exactly one of the two requested facts is stated.",
+              "Both requested facts are stated."
+            ]
+          },
+          "single_line": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge how the answer sits in the document.",
+              "query": "Which line records the breaking change to the authentication header in the 3.0 release?",
+              "decide": "Is the fact the query asks for stated inside one single line, rather than spread over several lines?"
+            },
+            "criteria": {
+              "true": "One line alone carries the fact.",
+              "false": "No single line carries the fact on its own."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L11"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "facts_present": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "single_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-absent-dental-annual-maximum",
+      "difficulty": "medium",
+      "rationale": "The summary covers medical, vision, life and commuter benefits and never mentions dental cover, so the answer is none and the document says nothing about the query. The completeness tolerance is 1 because the boundary between level 0 and level 1 is not sharp here: L03 states an annual maximum for a different benefit, which a careful reader may count as background. [label corrected in audit]",
+      "request": {
+        "state": {
+          "document": "Benefits summary, plan year",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Medical cover starts on the first day of the month after hire."
+            },
+            {
+              "id": "L02",
+              "text": "The medical deductible is 1,200 dollars for an individual."
+            },
+            {
+              "id": "L03",
+              "text": "Vision cover pays an annual maximum of 250 dollars for frames."
+            },
+            {
+              "id": "L04",
+              "text": "Life assurance is two times base salary with no medical questions."
+            },
+            {
+              "id": "L05",
+              "text": "The commuter account accepts up to 300 dollars a month pre tax."
+            },
+            {
+              "id": "L06",
+              "text": "Dependants are added within 30 days of a qualifying event."
+            },
+            {
+              "id": "L07",
+              "text": "The wellbeing allowance is 500 dollars a plan year."
+            },
+            {
+              "id": "L08",
+              "text": "Telemedicine visits have no copay on the medical plan."
+            },
+            {
+              "id": "L09",
+              "text": "Out of network medical claims are reimbursed at 60 percent."
+            },
+            {
+              "id": "L10",
+              "text": "The plan year runs from 1 July to 30 June."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line gives the annual maximum for dental crowns?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line gives the annual maximum for dental crowns?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "completeness": {
+            "type": "score",
+            "instructions": {
+              "task": "Rate how completely the document answers the query.",
+              "query": "Which line gives the annual maximum for dental crowns?"
+            },
+            "criteria": [
+              "The document says nothing about the query.",
+              "The document gives background only, with no answer.",
+              "The document gives a partial answer that needs another source.",
+              "The document gives a complete answer."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "none"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        },
+        "completeness": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 1
+        }
+      }
+    },
+    {
+      "name": "find-po-approval-threshold-line",
+      "difficulty": "medium",
+      "rationale": "L07 gives the threshold above which a director must approve. L03 names the same amount for a different control, the second quote requirement.",
+      "request": {
+        "state": {
+          "document": "Procurement policy extract",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "All purchases start with a requisition in the finance system."
+            },
+            {
+              "id": "L02",
+              "text": "Requisitions carry a cost centre and a business justification."
+            },
+            {
+              "id": "L03",
+              "text": "A second written quote is required for any purchase above 5,000 euro."
+            },
+            {
+              "id": "L04",
+              "text": "Preferred suppliers are listed in the supplier catalogue."
+            },
+            {
+              "id": "L05",
+              "text": "Software purchases also need a security review ticket."
+            },
+            {
+              "id": "L06",
+              "text": "Line managers approve every requisition from their team."
+            },
+            {
+              "id": "L07",
+              "text": "A director must approve any purchase above 5,000 euro in addition."
+            },
+            {
+              "id": "L08",
+              "text": "Purchases above 50,000 euro go to the investment committee."
+            },
+            {
+              "id": "L09",
+              "text": "Split orders to avoid a threshold are a policy breach."
+            },
+            {
+              "id": "L10",
+              "text": "Purchase orders expire if unused after 90 days."
+            },
+            {
+              "id": "L11",
+              "text": "Invoices are matched to the purchase order before payment."
+            },
+            {
+              "id": "L12",
+              "text": "Questions go to the procurement mailbox."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line states the amount above which a director must approve a purchase?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line states the amount above which a director must approve a purchase?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L07"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-anticoagulant-dose-after-week-one",
+      "difficulty": "hard",
+      "rationale": "L04 states the first week dose and L09 the dose from day 8, which is the one the query asks for. The reader must map after the first week onto day 8 onward. The document answers completely, so the completeness level is 3.",
+      "request": {
+        "state": {
+          "document": "Discharge instructions after knee replacement",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Keep the dressing dry until the wound review on day 10."
+            },
+            {
+              "id": "L02",
+              "text": "Walk with the frame for the first three days at home."
+            },
+            {
+              "id": "L03",
+              "text": "Ice the knee for 20 minutes up to four times a day."
+            },
+            {
+              "id": "L04",
+              "text": "Take apixaban 10 mg twice daily for the first seven days."
+            },
+            {
+              "id": "L05",
+              "text": "Do the ankle pump exercises hourly while awake."
+            },
+            {
+              "id": "L06",
+              "text": "Take paracetamol 1 g up to four times a day for pain."
+            },
+            {
+              "id": "L07",
+              "text": "Do not drive until the surgical team agrees at review."
+            },
+            {
+              "id": "L08",
+              "text": "Report calf pain, fever, or wound discharge to the ward."
+            },
+            {
+              "id": "L09",
+              "text": "From day 8 onward take apixaban 5 mg twice daily for 28 days."
+            },
+            {
+              "id": "L10",
+              "text": "Physiotherapy starts in the outpatient clinic in week two."
+            },
+            {
+              "id": "L11",
+              "text": "If a dose is missed, take it when remembered unless the next dose is due within six hours."
+            },
+            {
+              "id": "L12",
+              "text": "Bring the discharge summary to every follow up appointment."
+            },
+            {
+              "id": "L13",
+              "text": "The ward telephone is answered day and night."
+            },
+            {
+              "id": "L14",
+              "text": "Stitches are removed at the practice nurse appointment on day 14."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line gives the blood thinner dose to take after the first week?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line gives the blood thinner dose to take after the first week?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "completeness": {
+            "type": "score",
+            "instructions": {
+              "task": "Rate how completely the document answers the query.",
+              "query": "Which line gives the blood thinner dose to take after the first week?"
+            },
+            "criteria": [
+              "The document says nothing about the query.",
+              "The document gives background only, with no answer.",
+              "The document gives a partial answer that needs another source.",
+              "The document gives a complete answer."
+            ]
+          },
+          "single_line": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge how the answer sits in the document.",
+              "query": "Which line gives the blood thinner dose to take after the first week?",
+              "decide": "Is the fact the query asks for stated inside one single line, rather than spread over several lines?"
+            },
+            "criteria": {
+              "true": "One line alone carries the fact.",
+              "false": "No single line carries the fact on its own."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L09"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "completeness": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        },
+        "single_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-customer-convenience-notice",
+      "difficulty": "hard",
+      "rationale": "L11 is the customer's convenience notice. L05 is termination for breach and L14 is the supplier's convenience right, a near duplicate with the parties swapped. The early termination fee is never mentioned, so the two fact score is level 1.",
+      "request": {
+        "state": {
+          "document": "Master services agreement, termination section",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "The initial term is 24 months from the effective date."
+            },
+            {
+              "id": "L02",
+              "text": "The agreement renews for successive 12 month terms."
+            },
+            {
+              "id": "L03",
+              "text": "Fees are invoiced monthly in advance."
+            },
+            {
+              "id": "L04",
+              "text": "Either party may suspend performance during a force majeure event."
+            },
+            {
+              "id": "L05",
+              "text": "Either party may terminate for material breach on 15 days written notice if the breach is not cured."
+            },
+            {
+              "id": "L06",
+              "text": "Notices are served to the addresses in schedule 1."
+            },
+            {
+              "id": "L07",
+              "text": "Termination does not affect accrued rights."
+            },
+            {
+              "id": "L08",
+              "text": "The customer may suspend a statement of work for up to 30 days."
+            },
+            {
+              "id": "L09",
+              "text": "Data is returned within 30 days of any termination."
+            },
+            {
+              "id": "L10",
+              "text": "Confidentiality survives termination for five years."
+            },
+            {
+              "id": "L11",
+              "text": "The customer may end this agreement for convenience by giving notice no later than 60 days before the end of the then current term."
+            },
+            {
+              "id": "L12",
+              "text": "Transition assistance is charged at the rate card."
+            },
+            {
+              "id": "L13",
+              "text": "Termination for insolvency takes effect immediately on notice."
+            },
+            {
+              "id": "L14",
+              "text": "The supplier may terminate this agreement for convenience on 90 days written notice."
+            },
+            {
+              "id": "L15",
+              "text": "Governing law is the law of the state named in schedule 1."
+            },
+            {
+              "id": "L16",
+              "text": "Amendments are effective only when signed by both parties."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line states the notice the customer must give to end the agreement for convenience?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "L15": null,
+              "L16": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line states the notice the customer must give to end the agreement for convenience?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "facts_present": {
+            "type": "score",
+            "instructions": {
+              "task": "Judge which of the two requested facts the document states.",
+              "query": "Which line states the notice the customer must give to end the agreement for convenience?",
+              "fact_one": "the notice period the customer must give to end for convenience",
+              "fact_two": "whether an early termination fee applies to the customer"
+            },
+            "criteria": [
+              "Neither of the two requested facts is stated.",
+              "Exactly one of the two requested facts is stated.",
+              "Both requested facts are stated."
+            ]
+          },
+          "single_line": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge how the answer sits in the document.",
+              "query": "Which line states the notice the customer must give to end the agreement for convenience?",
+              "decide": "Is the fact the query asks for stated inside one single line, rather than spread over several lines?"
+            },
+            "criteria": {
+              "true": "One line alone carries the fact.",
+              "false": "No single line carries the fact on its own."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L11"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "facts_present": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "single_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-overlapping-room-booking",
+      "difficulty": "hard",
+      "rationale": "Only L10 is in Room A and shares time with 14:00 to 15:00. L04 is the same hour in another room; L06 and L12 touch the slot in Room A without overlapping it. The v1 query presupposed a board meeting that the document never mentions, which made none defensible; the query now asks about the slot itself. [revised after the v1 run: see usecase results doc, label revision]",
+      "request": {
+        "state": {
+          "document": "Tuesday room bookings, floor 2",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Room A, 08:00 to 09:00, standup, T. Ngo."
+            },
+            {
+              "id": "L02",
+              "text": "Room B, 09:00 to 10:30, design review, P. Adeyemi."
+            },
+            {
+              "id": "L03",
+              "text": "Room C, 10:00 to 11:00, interview panel, HR."
+            },
+            {
+              "id": "L04",
+              "text": "Room B, 14:00 to 15:00, supplier call, J. Fields."
+            },
+            {
+              "id": "L05",
+              "text": "Room A, 11:00 to 12:00, budget walkthrough, M. Cole."
+            },
+            {
+              "id": "L06",
+              "text": "Room A, 13:00 to 14:00, one to one, M. Cole."
+            },
+            {
+              "id": "L07",
+              "text": "Room C, 13:30 to 14:30, training, L. Brenner."
+            },
+            {
+              "id": "L08",
+              "text": "Room B, 15:30 to 16:00, retro, P. Adeyemi."
+            },
+            {
+              "id": "L09",
+              "text": "Room C, 16:00 to 17:00, community call, open."
+            },
+            {
+              "id": "L10",
+              "text": "Room A, 14:30 to 15:30, vendor demo, K. Ruiz."
+            },
+            {
+              "id": "L11",
+              "text": "Room B, 11:30 to 12:30, onboarding, HR."
+            },
+            {
+              "id": "L12",
+              "text": "Room A, 15:00 to 16:00, security review, S. Park."
+            },
+            {
+              "id": "L13",
+              "text": "Room C, 08:30 to 09:00, cleaning block, facilities."
+            },
+            {
+              "id": "L14",
+              "text": "Room B, 17:00 to 18:00, evening class, external."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line is the Room A booking that overlaps the 14:00 to 15:00 slot?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line is the Room A booking that overlaps the 14:00 to 15:00 slot?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "single_line": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge how the answer sits in the document.",
+              "query": "Which line is the Room A booking that overlaps the 14:00 to 15:00 slot?",
+              "decide": "Is the fact the query asks for stated inside one single line, rather than spread over several lines?"
+            },
+            "criteria": {
+              "true": "One line alone carries the fact.",
+              "false": "No single line carries the fact on its own."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L10"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "single_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-second-onsite-visit-charge",
+      "difficulty": "hard",
+      "rationale": "The on site visit on 12 March is billed twice, on L03 and on L07. L07 is the later of the two identical charges, so it is the second one.",
+      "request": {
+        "state": {
+          "document": "Invoice 4471, itemised lines in order of entry",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Monthly support retainer, March, 1,200.00."
+            },
+            {
+              "id": "L02",
+              "text": "Remote incident handling, 4 hours, 480.00."
+            },
+            {
+              "id": "L03",
+              "text": "On site visit 12 March, 1 day, 950.00."
+            },
+            {
+              "id": "L04",
+              "text": "Replacement switch, 1 unit, 640.00."
+            },
+            {
+              "id": "L05",
+              "text": "Rack rails and cabling, 85.00."
+            },
+            {
+              "id": "L06",
+              "text": "Out of hours surcharge 14 March, 220.00."
+            },
+            {
+              "id": "L07",
+              "text": "On site visit 12 March, 1 day, 950.00."
+            },
+            {
+              "id": "L08",
+              "text": "Travel, 180 km at 0.45 per km, 81.00."
+            },
+            {
+              "id": "L09",
+              "text": "Configuration backup service, March, 60.00."
+            },
+            {
+              "id": "L10",
+              "text": "Spare parts holding fee, March, 150.00."
+            },
+            {
+              "id": "L11",
+              "text": "Firmware upgrade 18 March, 2 hours, 240.00."
+            },
+            {
+              "id": "L12",
+              "text": "Credit for March SLA miss, minus 120.00."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line is the second charge for the on site visit on 12 March?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line is the second charge for the on site visit on 12 March?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L07"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "find-absent-liquid-damage-cover",
+      "difficulty": "hard",
+      "rationale": "The terms cover drops, screens and battery health and give an ingress rating, but no line says whether liquid damage is covered, so the answer is none and the document only supplies background.",
+      "request": {
+        "state": {
+          "document": "Device protection terms",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Cover starts on the day the device is delivered."
+            },
+            {
+              "id": "L02",
+              "text": "Damage from accidental drops is covered in the first year."
+            },
+            {
+              "id": "L03",
+              "text": "Screen replacement carries a 29 dollar service charge."
+            },
+            {
+              "id": "L04",
+              "text": "Battery replacement is included once health falls below 80 percent."
+            },
+            {
+              "id": "L05",
+              "text": "The device is rated IP54 against splashes from any direction."
+            },
+            {
+              "id": "L06",
+              "text": "Theft is not covered under these terms."
+            },
+            {
+              "id": "L07",
+              "text": "Cosmetic wear that does not affect function is not covered."
+            },
+            {
+              "id": "L08",
+              "text": "Repairs use genuine parts and keep the remaining cover."
+            },
+            {
+              "id": "L09",
+              "text": "Two claims are allowed in any 12 month period."
+            },
+            {
+              "id": "L10",
+              "text": "Cover ends if the device is opened by an unauthorised repairer."
+            },
+            {
+              "id": "L11",
+              "text": "Claims are started in the app with the serial number."
+            },
+            {
+              "id": "L12",
+              "text": "A replacement device carries the balance of the original cover."
+            },
+            {
+              "id": "L13",
+              "text": "Cover is not transferable to a new owner."
+            },
+            {
+              "id": "L14",
+              "text": "The plan may be cancelled within 14 days for a full refund."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line states whether accidental liquid damage is covered in the first year?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "L13": null,
+              "L14": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line states whether accidental liquid damage is covered in the first year?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "completeness": {
+            "type": "score",
+            "instructions": {
+              "task": "Rate how completely the document answers the query.",
+              "query": "Which line states whether accidental liquid damage is covered in the first year?"
+            },
+            "criteria": [
+              "The document says nothing about the query.",
+              "The document gives background only, with no answer.",
+              "The document gives a partial answer that needs another source.",
+              "The document gives a complete answer."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "none"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        },
+        "completeness": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 1
+        }
+      }
+    },
+    {
+      "name": "compose-choice-and-noul-battery-cold-chain",
+      "difficulty": "hard",
+      "rationale": "p3 alone fixes the refrigerated cutoff at 13:00. p1 is the ambient cutoff, p4 only points elsewhere. The normalised Choice and the per candidate Nouls are read as different result semantics and are not pooled.",
+      "request": {
+        "state": {
+          "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+          "candidates": [
+            {
+              "id": "p1",
+              "text": "Same day dispatch for ambient orders closes at 16:00."
+            },
+            {
+              "id": "p2",
+              "text": "Refrigerated orders are packed with gel packs rated for 36 hours in transit."
+            },
+            {
+              "id": "p3",
+              "text": "Refrigerated orders received after 13:00 leave on the next working day rather than the same day."
+            },
+            {
+              "id": "p4",
+              "text": "Dispatch cutoffs are shown on each product page."
+            }
+          ]
+        },
+        "questions": {
+          "best_candidate": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the one candidate that best answers the query.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "rule": "Select none when no candidate states the fact."
+            },
+            "criteria": {
+              "p1": null,
+              "p2": null,
+              "p3": null,
+              "p4": null,
+              "none": "No candidate states the fact the query asks for."
+            }
+          },
+          "cand_p1": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "candidate_id": "p1",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p2": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "candidate_id": "p2",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p3": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "candidate_id": "p3",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "cand_p4": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge one retrieval candidate against the query.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "candidate_id": "p4",
+              "decide": "Does the candidate passage with this id, on its own, state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The passage with this id, read on its own, states the fact the query asks for.",
+              "false": "The passage with this id does not state that fact, even if it repeats words from the query."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the retrieved set as a whole.",
+              "query": "What is the cutoff time for same day dispatch of refrigerated orders?",
+              "decide": "Does at least one candidate passage state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "Some passage in the state states the fact the query asks for.",
+              "false": "No passage in the state states that fact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "best_candidate": {
+          "type": "choice",
+          "expected": "p3"
+        },
+        "cand_p1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_p3": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_p4": {
+          "type": "noul",
+          "expected": false
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "rerank",
+          "question_ids": [
+            "cand_p1",
+            "cand_p2",
+            "cand_p3",
+            "cand_p4"
+          ],
+          "expected_order": [
+            "cand_p3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compose-select-system-and-key-scheduling",
+      "difficulty": "medium",
+      "rationale": "The next appointment lives in the scheduling system; the billing ledger holds past visits only. The only identifier the caller holds is the MRN, so the lookup key is the MRN and no consent step applies to the patient's own appointment.",
+      "request": {
+        "state": {
+          "request": "A patient telephones the front desk and asks when their next clinic appointment is.",
+          "caller_holds": "The patient's medical record number (MRN). No claim number, no appointment id, and the telephone number on file is out of date.",
+          "systems": [
+            {
+              "name": "scheduling_system",
+              "holds": "Future and past appointment slots, searchable by MRN or appointment id."
+            },
+            {
+              "name": "billing_ledger",
+              "holds": "Charges for visits that have already happened, searchable by claim number."
+            },
+            {
+              "name": "chart_notes",
+              "holds": "Clinical notes written after each visit, searchable by MRN."
+            },
+            {
+              "name": "insurance_portal",
+              "holds": "Eligibility and prior authorization status, searchable by member id."
+            }
+          ],
+          "rule": "Disclosure of a patient's own appointment to that patient needs no extra consent once identity is verified."
+        },
+        "questions": {
+          "system": {
+            "type": "choice",
+            "instructions": "Select the system that must be searched to answer the caller's question.",
+            "criteria": {
+              "billing_ledger": null,
+              "chart_notes": null,
+              "insurance_portal": null,
+              "scheduling_system": null
+            }
+          },
+          "lookup_key": {
+            "type": "choice",
+            "instructions": "Select the identifier the front desk can actually use for that search.",
+            "criteria": {
+              "appointment_id": null,
+              "claim_number": null,
+              "member_id": null,
+              "mrn": null,
+              "telephone_number": null
+            }
+          },
+          "needs_extra_consent": {
+            "type": "noul",
+            "instructions": "Does this lookup need a separate consent step beyond verifying the caller's identity?",
+            "criteria": {
+              "true": "A separate consent step is required.",
+              "false": "No separate consent step is required."
+            }
+          }
+        }
+      },
+      "targets": {
+        "system": {
+          "type": "choice",
+          "expected": "scheduling_system"
+        },
+        "lookup_key": {
+          "type": "choice",
+          "expected": "mrn"
+        },
+        "needs_extra_consent": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "compose-select-index-and-field-checkout-502",
+      "difficulty": "hard",
+      "rationale": "The trace id is recorded on the ticket and the log index is keyed by trace id, while the order number is explicitly not indexed. The metrics store answers rates, not one failed request, so the log index is the right tool even though a metrics query is the tempting first move.",
+      "request": {
+        "state": {
+          "ticket": "Checkout returned 502 for order 88123 at 09:41 yesterday. The ticket records trace id 7c1f9ab2 copied from the error page.",
+          "tools": [
+            {
+              "name": "metrics_query",
+              "holds": "Aggregated error rates per service per minute. No individual requests."
+            },
+            {
+              "name": "log_index",
+              "holds": "Individual request logs for the last 14 days, keyed by trace id and by service. Order numbers are not indexed."
+            },
+            {
+              "name": "config_lookup",
+              "holds": "Current deployed configuration per service."
+            },
+            {
+              "name": "ticket_search",
+              "holds": "Previous support tickets and their resolutions."
+            }
+          ],
+          "note": "Log retention is 14 days and the event is from yesterday."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the tool that can retrieve the record of this one failed checkout request.",
+            "criteria": {
+              "config_lookup": null,
+              "log_index": null,
+              "metrics_query": null,
+              "ticket_search": null
+            }
+          },
+          "lookup_field": {
+            "type": "choice",
+            "instructions": "Select the field the search must be keyed on, given what the ticket records and what the tool indexes.",
+            "criteria": {
+              "customer_email": null,
+              "order_number": null,
+              "service_name": null,
+              "trace_id": null
+            }
+          },
+          "within_retention": {
+            "type": "noul",
+            "instructions": "Is the event still inside the log retention window?",
+            "criteria": {
+              "true": "The event is recent enough to still be stored.",
+              "false": "The event has aged out of retention."
+            }
+          },
+          "needs_time_range": {
+            "type": "noul",
+            "instructions": "Does the ticket supply a time that can narrow the search?",
+            "criteria": {
+              "true": "A usable time is recorded.",
+              "false": "No usable time is recorded."
+            }
+          }
+        }
+      },
+      "targets": {
+        "tool": {
+          "type": "choice",
+          "expected": "log_index"
+        },
+        "lookup_field": {
+          "type": "choice",
+          "expected": "trace_id"
+        },
+        "within_retention": {
+          "type": "noul",
+          "expected": true
+        },
+        "needs_time_range": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "compose-broad-then-fine-offboarding",
+      "difficulty": "medium",
+      "rationale": "Access removal sits in the facilities section, and inside it L12 is the line that removes building access. The payroll section is the broad distractor because it also uses the word access for the payslip portal.",
+      "request": {
+        "state": {
+          "document": "Offboarding checklist",
+          "sections": [
+            {
+              "id": "S1",
+              "title": "Manager tasks",
+              "lines": [
+                "L01",
+                "L02",
+                "L03"
+              ]
+            },
+            {
+              "id": "S2",
+              "title": "Payroll and payslip access",
+              "lines": [
+                "L04",
+                "L05",
+                "L06"
+              ]
+            },
+            {
+              "id": "S3",
+              "title": "IT accounts",
+              "lines": [
+                "L07",
+                "L08",
+                "L09"
+              ]
+            },
+            {
+              "id": "S4",
+              "title": "Facilities and property",
+              "lines": [
+                "L10",
+                "L11",
+                "L12"
+              ]
+            }
+          ],
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Confirm the last working day in the HR system."
+            },
+            {
+              "id": "L02",
+              "text": "Agree the handover owner for each open piece of work."
+            },
+            {
+              "id": "L03",
+              "text": "Book the exit conversation."
+            },
+            {
+              "id": "L04",
+              "text": "Final salary is paid in the normal monthly run."
+            },
+            {
+              "id": "L05",
+              "text": "Payslip portal access continues for 12 months after leaving."
+            },
+            {
+              "id": "L06",
+              "text": "Unused holiday is paid with the final salary."
+            },
+            {
+              "id": "L07",
+              "text": "Mail and chat accounts are suspended at 18:00 on the last day."
+            },
+            {
+              "id": "L08",
+              "text": "Source control access is revoked by the platform team."
+            },
+            {
+              "id": "L09",
+              "text": "Laptop disk is wiped after the return is logged."
+            },
+            {
+              "id": "L10",
+              "text": "The laptop and charger are returned to the facilities desk."
+            },
+            {
+              "id": "L11",
+              "text": "Locker contents are cleared on the last working day."
+            },
+            {
+              "id": "L12",
+              "text": "Facilities deactivate the building badge at the end of the last shift."
+            }
+          ]
+        },
+        "questions": {
+          "section": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the section that contains the answer.",
+              "query": "Which line says how a leaver's building access is removed?"
+            },
+            "criteria": {
+              "S1": null,
+              "S2": null,
+              "S3": null,
+              "S4": null
+            }
+          },
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "Which line says how a leaver's building access is removed?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "Which line says how a leaver's building access is removed?",
+              "decide": "Does the document state the fact the query asks for?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "completeness": {
+            "type": "score",
+            "instructions": {
+              "task": "Rate how completely the document answers the query.",
+              "query": "Which line says how a leaver's building access is removed?"
+            },
+            "criteria": [
+              "The document says nothing about the query.",
+              "The document gives background only, with no answer.",
+              "The document gives a partial answer that needs another source.",
+              "The document gives a complete answer."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "section": {
+          "type": "choice",
+          "expected": "S4"
+        },
+        "answer_line": {
+          "type": "choice",
+          "expected": "L12"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": true
+        },
+        "completeness": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "compose-partial-answer-cancellation-fee",
+      "difficulty": "hard",
+      "contested": true,
+      "rationale": "L06 is the only line about the same day cancellation charge, but it defers the amount to a separate published schedule, so the line choice is L06 while the document does not state the fee itself. That split is the point of the independent Noul. Contested on answer_line: its own rule says to select none when no line states the fact the query asks for, and the Noul on the same case fixes that fact as the amount, which no line states. Under that reading none is defensible and L06 is defensible as the closest line, so the Choice target here is not a clean gold.",
+      "request": {
+        "state": {
+          "document": "Clinic appointment policy",
+          "lines": [
+            {
+              "id": "L01",
+              "text": "Appointments are booked by telephone or in the portal."
+            },
+            {
+              "id": "L02",
+              "text": "Arrive ten minutes before the booked time."
+            },
+            {
+              "id": "L03",
+              "text": "Bring a photo identity document to a first visit."
+            },
+            {
+              "id": "L04",
+              "text": "Cancellations more than 48 hours ahead are free."
+            },
+            {
+              "id": "L05",
+              "text": "A first missed appointment is recorded but not charged."
+            },
+            {
+              "id": "L06",
+              "text": "A cancellation on the day of the appointment attracts the late cancellation charge set out in the current fee schedule."
+            },
+            {
+              "id": "L07",
+              "text": "The fee schedule is displayed at reception and reviewed each April."
+            },
+            {
+              "id": "L08",
+              "text": "Charges are added to the next invoice."
+            },
+            {
+              "id": "L09",
+              "text": "Repeated missed appointments may end the care arrangement."
+            },
+            {
+              "id": "L10",
+              "text": "Emergencies are reviewed by the practice manager."
+            },
+            {
+              "id": "L11",
+              "text": "Interpreter bookings are cancelled separately."
+            },
+            {
+              "id": "L12",
+              "text": "Transport bookings follow the transport provider's own rules."
+            }
+          ]
+        },
+        "questions": {
+          "answer_line": {
+            "type": "choice",
+            "instructions": {
+              "task": "Select the single line of the document that answers the query.",
+              "query": "What fee is charged for cancelling an appointment on the same day?",
+              "rule": "Select none when no line states the fact the query asks for."
+            },
+            "criteria": {
+              "L01": null,
+              "L02": null,
+              "L03": null,
+              "L04": null,
+              "L05": null,
+              "L06": null,
+              "L07": null,
+              "L08": null,
+              "L09": null,
+              "L10": null,
+              "L11": null,
+              "L12": null,
+              "none": "No line in the document states the fact the query asks for."
+            }
+          },
+          "contains_answer": {
+            "type": "noul",
+            "instructions": {
+              "task": "Judge the document as a whole.",
+              "query": "What fee is charged for cancelling an appointment on the same day?",
+              "decide": "Does the document state the actual amount of the same day cancellation fee?"
+            },
+            "criteria": {
+              "true": "The document states the fact the query asks for.",
+              "false": "The document does not state that fact."
+            }
+          },
+          "completeness": {
+            "type": "score",
+            "instructions": {
+              "task": "Rate how completely the document answers the query.",
+              "query": "What fee is charged for cancelling an appointment on the same day?"
+            },
+            "criteria": [
+              "The document says nothing about the query.",
+              "The document gives background only, with no answer.",
+              "The document gives a partial answer that needs another source.",
+              "The document gives a complete answer."
+            ]
+          }
+        }
+      },
+      "targets": {
+        "answer_line": {
+          "type": "choice",
+          "expected": "L06"
+        },
+        "contains_answer": {
+          "type": "noul",
+          "expected": false
+        },
+        "completeness": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    }
+  ]
+}

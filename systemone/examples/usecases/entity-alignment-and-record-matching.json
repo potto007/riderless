@@ -1,0 +1,2533 @@
+{
+  "suite": "entity-alignment-and-record-matching",
+  "family": "Entity alignment and record matching",
+  "source": [
+    "Knowledge graph entity alignment (entity_alignment)",
+    "Several considerations per input row of the build-spec pattern table",
+    "Composite scoring pattern"
+  ],
+  "description": "Measures whether one ordered three-level Score (different / review / same) plus field-level Nouls can separate duplicate records from distinct ones on candidate pairs whose surface similarity is deliberately misleading. Every case is decidable from the state alone: matching policy, authoritative identifier, and any corporate or clinical relationship needed for the judgment are written into the state, so no case depends on outside world knowledge. Gold Score levels are 2 for duplicates, 0 for distinct records, and 1 where the state's own policy says the pair is a review case. Tolerance follows the runner in scripts/systemone/run_usecase_suites.py, which grades the most probable Score level: tolerance 0 means that level must equal the gold level and is used on the poles, tolerance 1 is used on the middle band and on pole cases whose policy makes one adjacent level defensible, because the API claims an ordered distribution, not a calibrated one. Field Nouls are graded at 0.5 with no tolerance; a field Noul is gold false whenever the two records genuinely disagree on that field or one record leaves it blank, including in pairs whose overall gold is same. Suggested metrics: exact accuracy on levels 0 and 2, band accuracy on level 1, field-level Noul accuracy at 0.5, Choice accuracy, top-1 ranking accuracy, and the merge-error rate over the recorded fractional score_value (gold level 0 but Score expectation above 1.5), which is the metric an operator gates on. This suite does not measure calibration, blocking or candidate generation, throughput, or any ability to normalize, transform, or compute over field values; the model only selects among supplied labels.",
+  "cases": [
+    {
+      "name": "contact-abbreviation-noise",
+      "difficulty": "easy",
+      "rationale": "Same email, same digits in the phone, and the same practice name; the only differences are casing, punctuation, and the abbreviation Grp. for Group.",
+      "request": {
+        "state": {
+          "matching_policy": "Two contact records are the same person when the identifying fields agree after ignoring casing, punctuation, and common abbreviations.",
+          "record_a": {
+            "name": "Katherine M. Villalobos",
+            "email": "k.villalobos@northgate-dental.example",
+            "phone": "(503) 555-0188",
+            "organization": "Northgate Dental Group"
+          },
+          "record_b": {
+            "name": "KATHERINE VILLALOBOS",
+            "email": "K.Villalobos@Northgate-Dental.example",
+            "phone": "5035550188",
+            "organization": "Northgate Dental Grp."
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same person, using only the supplied fields and the matching policy.",
+            "criteria": [
+              "The records describe different people",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same person"
+            ]
+          },
+          "name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same personal name, ignoring casing and a middle initial?"
+          },
+          "email_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same email address, ignoring casing?"
+          },
+          "phone_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same telephone number, ignoring punctuation?"
+          },
+          "organization_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same organization, allowing the abbreviation Grp. for Group?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "name_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "email_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "phone_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "organization_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "catalog-unrelated-products",
+      "difficulty": "easy",
+      "rationale": "Different product category, different brand, and no shared identifier; nothing in the state links the two listings.",
+      "request": {
+        "state": {
+          "record_a": {
+            "title": "Pre-seasoned cast iron skillet, 12 inch",
+            "brand": "Halvorsen Ironworks",
+            "category": "Cookware",
+            "gtin": "00799100412885"
+          },
+          "record_b": {
+            "title": "Noise cancelling over-ear headphones, 40 hour battery",
+            "brand": "Prendell Audio",
+            "category": "Audio",
+            "gtin": "00618230775104"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same product.",
+            "criteria": [
+              "The records describe different products",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same product"
+            ]
+          },
+          "gtin_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same GTIN?"
+          },
+          "brand_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same brand?"
+          },
+          "category_match": {
+            "type": "noul",
+            "instructions": "Do the two records sit in the same product category?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "gtin_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "brand_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "category_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "patient-exact-duplicate",
+      "difficulty": "easy",
+      "rationale": "Identical medical record number and identical date of birth written in two formats; the second record simply omits the middle initial.",
+      "request": {
+        "state": {
+          "matching_policy": "Within one clinic the medical record number is the authoritative patient identifier.",
+          "record_a": {
+            "name": "Desmond R. Achterberg",
+            "dob": "1971-08-04",
+            "mrn": "MRN-330914",
+            "clinic": "Rivermont Family Practice"
+          },
+          "record_b": {
+            "name": "Desmond Achterberg",
+            "dob": "August 4, 1971",
+            "mrn": "MRN-330914",
+            "clinic": "Rivermont Family Practice"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same patient.",
+            "criteria": [
+              "The records describe different patients",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same patient"
+            ]
+          },
+          "mrn_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same medical record number?"
+          },
+          "dob_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same date of birth, allowing different date formats?"
+          },
+          "name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same patient name, ignoring a middle initial?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "mrn_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "dob_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "name_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "vendor-clearly-distinct",
+      "difficulty": "easy",
+      "rationale": "Different trade name, different tax id, different city, and different line of business; the correct resolution action is to keep the vendors separate.",
+      "request": {
+        "state": {
+          "record_a": {
+            "legal_name": "Braemont Sheet Metal LLC",
+            "tax_id": "27-6610449",
+            "city": "Spokane WA",
+            "category": "fabrication"
+          },
+          "record_b": {
+            "legal_name": "Tallgrass Language Services Inc",
+            "tax_id": "45-2209817",
+            "city": "Lincoln NE",
+            "category": "translation"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same vendor.",
+            "criteria": [
+              "The records describe different vendors",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same vendor"
+            ]
+          },
+          "tax_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same tax id?"
+          },
+          "legal_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same legal name?"
+          },
+          "category_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same vendor category?"
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "Choose the resolution action for this candidate pair.",
+            "criteria": {
+              "merge_records": "The pair is a duplicate and can be merged automatically",
+              "merge_after_field_review": "The pair is a duplicate but one field must be reconciled first",
+              "keep_separate": "The records describe different vendors and must stay separate",
+              "escalate_to_data_steward": "The evidence is mixed and a steward must decide"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "tax_id_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "legal_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "category_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "action": {
+          "type": "choice",
+          "expected": "keep_separate"
+        }
+      }
+    },
+    {
+      "name": "room-booking-same-event",
+      "difficulty": "easy",
+      "rationale": "Same room, same date, and the same start time written as 14:00 and 2:00 PM; the title differs only by casing and a recurrence note.",
+      "request": {
+        "state": {
+          "record_a": {
+            "title": "Q3 Budget Review",
+            "room": "Hawthorn 4B",
+            "date": "2026-09-17",
+            "start": "14:00",
+            "organizer": "Priya Raghunathan"
+          },
+          "record_b": {
+            "title": "q3 budget review (recurring)",
+            "room": "Hawthorn 4B",
+            "date": "2026-09-17",
+            "start": "2:00 PM",
+            "organizer": "Priya Raghunathan"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same calendar booking.",
+            "criteria": [
+              "The records describe different bookings",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same booking"
+            ]
+          },
+          "start_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same start time, allowing a 24 hour and a 12 hour clock?"
+          },
+          "room_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same room?"
+          },
+          "title_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same event title, ignoring casing and a parenthetical note?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "start_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "room_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "title_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "part-unrelated-components",
+      "difficulty": "easy",
+      "rationale": "A heat exchanger and a relief valve are different components with different part numbers, drawings, and functions.",
+      "request": {
+        "state": {
+          "record_a": {
+            "part_number": "HX-400",
+            "description": "Shell and tube heat exchanger, 40 kW",
+            "drawing": "DWG-11902",
+            "assembly": "steam skid"
+          },
+          "record_b": {
+            "part_number": "PRV-12",
+            "description": "Spring loaded pressure relief valve, 12 bar",
+            "drawing": "DWG-20774",
+            "assembly": "air receiver"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same catalog part.",
+            "criteria": [
+              "The records describe different parts",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same part"
+            ]
+          },
+          "part_number_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same part number?"
+          },
+          "drawing_match": {
+            "type": "noul",
+            "instructions": "Do the two records reference the same drawing?"
+          },
+          "function_match": {
+            "type": "noul",
+            "instructions": "Do the two descriptions describe a component with the same function?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "part_number_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "drawing_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "function_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "matter-transposed-name-fields",
+      "difficulty": "easy",
+      "rationale": "Identical docket and court; the party name is the same name written surname first in one record.",
+      "request": {
+        "state": {
+          "record_a": {
+            "party": "Reyes, Ana Sofia",
+            "docket": "2026-CV-00418",
+            "court": "Bernalillo County District Court",
+            "role": "plaintiff"
+          },
+          "record_b": {
+            "party": "Ana Sofia Reyes",
+            "docket": "2026-CV-00418",
+            "court": "Bernalillo County District Court",
+            "role": "plaintiff"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same party in the same matter.",
+            "criteria": [
+              "The records describe different party entries",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same party entry"
+            ]
+          },
+          "docket_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same docket number?"
+          },
+          "party_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same person, allowing surname first order?"
+          },
+          "court_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same court?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "docket_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "party_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "court_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "customer-moved-address",
+      "difficulty": "medium",
+      "rationale": "The account id and email agree and the policy makes the account id authoritative, so the pair is the same customer even though the postal address genuinely differs; record_b carries the later verified_at, so it is the surviving master.",
+      "request": {
+        "state": {
+          "matching_policy": "Customer records are the same account when account_id agrees. A changed postal address does not split an account. When two records merge, the record with the later verified_at becomes the surviving master.",
+          "record_a": {
+            "account_id": "ACCT-55127",
+            "name": "Ottoline Marchetti",
+            "email": "o.marchetti@wendell-mail.example",
+            "address": "3311 Gravelly Pt Rd, Arlington VA",
+            "verified_at": "2025-11-08"
+          },
+          "record_b": {
+            "account_id": "ACCT-55127",
+            "name": "Ottoline Marchetti",
+            "email": "o.marchetti@wendell-mail.example",
+            "address": "812 Larkspur Ct, Reston VA",
+            "verified_at": "2026-06-21"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same customer account under the stated policy.",
+            "criteria": [
+              "The records describe different customers",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same customer"
+            ]
+          },
+          "account_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same account id?"
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same postal address?",
+            "criteria": {
+              "true": "Both records give the same street address",
+              "false": "The records give different street addresses, even if the same person lived at both"
+            }
+          },
+          "email_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same email address?"
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "Choose the resolution action for this candidate pair.",
+            "criteria": {
+              "merge_records": "The pair is the same account and may be merged",
+              "keep_separate": "The records describe different customers",
+              "escalate_to_data_steward": "The evidence is mixed and a steward must decide",
+              "discard_both": "Neither record should be retained"
+            }
+          },
+          "surviving_master": {
+            "type": "choice",
+            "instructions": "If the pair is merged, which record becomes the surviving master under the stated policy?",
+            "criteria": {
+              "record_a": "record_a survives",
+              "record_b": "record_b survives",
+              "not_applicable": "The pair is not merged"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "account_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "email_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "action": {
+          "type": "choice",
+          "expected": "merge_records"
+        },
+        "surviving_master": {
+          "type": "choice",
+          "expected": "record_b"
+        }
+      }
+    },
+    {
+      "name": "product-brand-renamed",
+      "difficulty": "medium",
+      "rationale": "The GTIN is identical and the state documents the rename from Kestrel Home to Fenwright Home, so the brand rubric is satisfied while the literal strings differ.",
+      "request": {
+        "state": {
+          "matching_policy": "GTIN is the authoritative product identifier in this catalog.",
+          "brand_registry_note": "Kestrel Home was renamed Fenwright Home in March 2026. The rename covers the same company and the same product lines.",
+          "record_a": {
+            "title": "Linen blend curtain panel, 52 by 84 inch, oat",
+            "brand": "Kestrel Home",
+            "gtin": "00740021559034",
+            "listed": "2025-10-02"
+          },
+          "record_b": {
+            "title": "Linen blend curtain panel 52x84in, oat",
+            "brand": "Fenwright Home",
+            "gtin": "00740021559034",
+            "listed": "2026-04-19"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same product.",
+            "criteria": [
+              "The records describe different products",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same product"
+            ]
+          },
+          "gtin_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same GTIN?"
+          },
+          "brand_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same brand owner?",
+            "criteria": {
+              "true": "The brand fields name the same company, including a rename documented in the state",
+              "false": "The brand fields name two different companies"
+            }
+          },
+          "size_match": {
+            "type": "noul",
+            "instructions": "Do the two titles state the same panel dimensions?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "gtin_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "brand_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "size_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "vendor-parent-and-subsidiary",
+      "difficulty": "medium",
+      "rationale": "The registry note in the state says the two are separately registered entities with different tax ids; they share only a headquarters address, so they are related but distinct and must not be merged.",
+      "request": {
+        "state": {
+          "matching_policy": "Vendor records are the same entity only when the tax id agrees. Separately registered entities are never merged, however closely they are related.",
+          "registry_note": "Brightline Logistics LLC is a wholly owned subsidiary of Brightline Group Inc. Each files its own returns under its own tax id and both are registered at the group headquarters.",
+          "record_a": {
+            "legal_name": "Brightline Group Inc",
+            "tax_id": "38-4471902",
+            "address": "2 Winterhall Plaza, Memphis TN",
+            "category": "holding company"
+          },
+          "record_b": {
+            "legal_name": "Brightline Logistics LLC",
+            "tax_id": "38-5509317",
+            "address": "2 Winterhall Plaza, Memphis TN",
+            "category": "freight brokerage"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same vendor entity under the stated policy.",
+            "criteria": [
+              "The records describe different entities",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same entity"
+            ]
+          },
+          "tax_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same tax id?"
+          },
+          "legal_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same registered legal name?"
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same registered address?"
+          },
+          "relationship_broad": {
+            "type": "choice",
+            "instructions": "Classify the relationship between the two records at the broad level.",
+            "criteria": {
+              "same_entity": "One entity recorded twice",
+              "related_but_distinct": "Two distinct entities with a documented relationship",
+              "unrelated": "No relationship is stated or implied"
+            }
+          },
+          "relationship_fine": {
+            "type": "choice",
+            "instructions": "Classify the specific relationship between the two records.",
+            "criteria": {
+              "duplicate_record": "The same entity entered twice",
+              "parent_and_subsidiary": "One entity owns the other",
+              "predecessor_and_successor": "One entity replaced the other over time",
+              "two_branches_of_one_company": "Two sites of one registered company",
+              "sibling_entities_under_one_owner": "Two entities that share an owner but neither owns the other",
+              "unrelated_entities": "No documented relationship"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "tax_id_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "legal_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "relationship_broad": {
+          "type": "choice",
+          "expected": "related_but_distinct"
+        },
+        "relationship_fine": {
+          "type": "choice",
+          "expected": "parent_and_subsidiary"
+        }
+      }
+    },
+    {
+      "name": "patient-same-name-different-dob",
+      "difficulty": "medium",
+      "rationale": "A common name at one clinic, but the dates of birth differ by eleven years and the medical record numbers differ; the policy makes the MRN authoritative.",
+      "request": {
+        "state": {
+          "matching_policy": "Within one clinic the medical record number is the authoritative patient identifier. A shared name is not evidence of a duplicate.",
+          "record_a": {
+            "name": "Michael Chen",
+            "dob": "1984-02-19",
+            "mrn": "MRN-118340",
+            "clinic": "Rivermont Family Practice"
+          },
+          "record_b": {
+            "name": "Michael Chen",
+            "dob": "1995-07-30",
+            "mrn": "MRN-402771",
+            "clinic": "Rivermont Family Practice"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same patient.",
+            "criteria": [
+              "The records describe different patients",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same patient"
+            ]
+          },
+          "name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same patient name?"
+          },
+          "dob_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same date of birth?"
+          },
+          "mrn_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same medical record number?"
+          },
+          "clinic_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same clinic?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "name_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "dob_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "mrn_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "clinic_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "part-revision-review-policy",
+      "difficulty": "medium",
+      "rationale": "The part number and drawing agree but the revisions differ, and the stated policy sends a revision difference to review rather than to an automatic merge. [audit: score tolerance tightened to 0, because on a three level scale a middle expected level with tolerance 1 accepts every level and reports within_tolerance as a certain pass]",
+      "request": {
+        "state": {
+          "matching_policy": "Two catalog rows with the same part number but different revisions are a review case. They are not merged automatically because a revision may change fit or material.",
+          "record_a": {
+            "part_number": "VLV-7741",
+            "revision": "C",
+            "drawing": "DWG-44120",
+            "gasket_material": "nitrile",
+            "released": "2024-05-14"
+          },
+          "record_b": {
+            "part_number": "VLV-7741",
+            "revision": "D",
+            "drawing": "DWG-44120",
+            "gasket_material": "fluorocarbon",
+            "released": "2026-01-27"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b should be treated as the same catalog row under the stated policy.",
+            "criteria": [
+              "The rows describe different parts",
+              "The evidence is mixed and a curator should review the pair",
+              "The rows describe the same part"
+            ]
+          },
+          "part_number_match": {
+            "type": "noul",
+            "instructions": "Do the two rows carry the same part number?"
+          },
+          "revision_match": {
+            "type": "noul",
+            "instructions": "Do the two rows carry the same revision letter?"
+          },
+          "drawing_match": {
+            "type": "noul",
+            "instructions": "Do the two rows reference the same drawing?"
+          },
+          "material_match": {
+            "type": "noul",
+            "instructions": "Do the two rows state the same gasket material?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "part_number_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "revision_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "drawing_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "material_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "tickets-different-order",
+      "difficulty": "medium",
+      "rationale": "The same customer reports the same kind of problem twice, but the order ids differ, and the policy defines a duplicate as the same problem on the same order.",
+      "request": {
+        "state": {
+          "matching_policy": "Two support tickets are duplicates only when they report the same problem for the same order id.",
+          "record_a": {
+            "ticket_id": "T-90411",
+            "customer": "Wren Halloway",
+            "order_id": "SO-77120",
+            "summary": "Package marked delivered but nothing arrived",
+            "opened": "2026-08-03"
+          },
+          "record_b": {
+            "ticket_id": "T-91885",
+            "customer": "Wren Halloway",
+            "order_id": "SO-80644",
+            "summary": "Tracking says delivered, no package at the door",
+            "opened": "2026-08-27"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b are duplicate tickets under the stated policy.",
+            "criteria": [
+              "The tickets are about different matters",
+              "The evidence is mixed and an agent should review the pair",
+              "The tickets are duplicates of one another"
+            ]
+          },
+          "customer_match": {
+            "type": "noul",
+            "instructions": "Do the two tickets come from the same customer?"
+          },
+          "order_match": {
+            "type": "noul",
+            "instructions": "Do the two tickets reference the same order id?"
+          },
+          "problem_match": {
+            "type": "noul",
+            "instructions": "Do the two summaries describe the same kind of problem?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "customer_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "order_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "problem_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "address-normalization-variants",
+      "difficulty": "medium",
+      "rationale": "Street, unit, and city are the same address written with different abbreviations, and the nine digit postal code extends the five digit one; the delivery point is identical.",
+      "request": {
+        "state": {
+          "matching_policy": "Two service addresses are the same delivery point when street, unit, and postal code agree. A five digit postal code agrees with its nine digit extension.",
+          "record_a": {
+            "street": "1420 W. Sunbury Rd",
+            "unit": "Apt 3B",
+            "city": "Canton OH",
+            "postal_code": "44718"
+          },
+          "record_b": {
+            "street": "1420 West Sunbury Road",
+            "unit": "Unit 3B",
+            "city": "Canton, Ohio",
+            "postal_code": "44718-2201"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same delivery point under the stated policy.",
+            "criteria": [
+              "The records describe different delivery points",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same delivery point"
+            ]
+          },
+          "street_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same street address, allowing abbreviations?"
+          },
+          "unit_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same unit, allowing Apt and Unit as equivalent labels?"
+          },
+          "postal_match": {
+            "type": "noul",
+            "instructions": "Do the two postal codes agree under the stated policy?",
+            "criteria": {
+              "true": "The codes are equal, or one is the nine digit extension of the other",
+              "false": "The five digit portions differ"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "street_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "unit_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "postal_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "preprint-and-journal-version",
+      "difficulty": "medium",
+      "rationale": "The policy states that a preprint and its published version are one work; the title and author list agree and only the DOI and venue differ.",
+      "request": {
+        "state": {
+          "matching_policy": "A preprint and the published version of the same paper are one work in this bibliography. The DOI differs between versions and is not decisive.",
+          "record_a": {
+            "title": "Sparse anchor selection for low drift indoor odometry",
+            "authors": [
+              "M. Olayinka",
+              "R. Feltzer",
+              "D. Sarnowski"
+            ],
+            "venue": "arXiv preprint",
+            "doi": "10.48999/arxiv.2601.09912",
+            "year": 2026
+          },
+          "record_b": {
+            "title": "Sparse Anchor Selection for Low Drift Indoor Odometry",
+            "authors": [
+              "Morolake Olayinka",
+              "Ruth Feltzer",
+              "Dariusz Sarnowski"
+            ],
+            "venue": "Journal of Indoor Navigation",
+            "doi": "10.5120/jin.2026.4417",
+            "year": 2026
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same work under the stated policy.",
+            "criteria": [
+              "The records describe different works",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same work"
+            ]
+          },
+          "title_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same title, ignoring casing?"
+          },
+          "authors_match": {
+            "type": "noul",
+            "instructions": "Do the two author lists name the same people in the same order, allowing initials for given names?"
+          },
+          "doi_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same DOI?"
+          },
+          "venue_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same publication venue?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "title_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "authors_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "doi_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "venue_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "listing-color-variant",
+      "difficulty": "medium",
+      "rationale": "The model line agrees but the SKUs differ and one listing specifies a color the other leaves open; the policy sends a colour variant pair to review. [audit: score tolerance tightened to 0, because on a three level scale a middle expected level with tolerance 1 accepts every level and reports within_tolerance as a certain pass]",
+      "request": {
+        "state": {
+          "matching_policy": "Listings that differ only by a colour variant are a review case for a merchandiser. They are neither merged nor split automatically.",
+          "record_a": {
+            "sku": "TRH-20L-BASE",
+            "title": "Trailhead 20L daypack",
+            "model_line": "Trailhead 20L",
+            "colour": "not specified"
+          },
+          "record_b": {
+            "sku": "TRH-20L-SLB",
+            "title": "Trailhead 20L daypack, Slate Blue",
+            "model_line": "Trailhead 20L",
+            "colour": "Slate Blue"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same listing under the stated policy.",
+            "criteria": [
+              "The records describe different listings",
+              "The evidence is mixed and a merchandiser should review the pair",
+              "The records describe the same listing"
+            ]
+          },
+          "sku_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same SKU?"
+          },
+          "model_line_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same model line?"
+          },
+          "colour_match": {
+            "type": "noul",
+            "instructions": "Do both records state the same colour?",
+            "criteria": {
+              "true": "Both records state a colour and the colours are the same",
+              "false": "The colours differ, or one record does not state a colour"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "sku_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "model_line_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "colour_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "clinician-candidate-block-ranking",
+      "difficulty": "medium",
+      "rationale": "Only candidate c3 shares the authoritative NPI with the query record; c1 shares the clinic and a similar name, c2 shares the exact spelling of the name only, and c4 shares neither.",
+      "request": {
+        "state": {
+          "matching_policy": "The NPI is the authoritative identifier for a clinician. Two records with different NPIs describe different clinicians, whatever the names say.",
+          "query_record": {
+            "name": "Dr. Anneli Rostock",
+            "clinic": "Bayside Sleep Medicine",
+            "npi": "1730558294",
+            "phone": "(415) 555-0132"
+          },
+          "candidates": {
+            "c1": {
+              "name": "Annelise Rostock",
+              "clinic": "Bayside Sleep Medicine",
+              "npi": "1902774610",
+              "phone": "(415) 555-0188"
+            },
+            "c2": {
+              "name": "Anneli Rostock",
+              "clinic": "Harborview Pulmonary",
+              "npi": "1655400238",
+              "phone": "(415) 555-0900"
+            },
+            "c3": {
+              "name": "A. Rostock, MD",
+              "clinic": "Bayside Sleep Medicine and Pulmonary",
+              "npi": "1730558294",
+              "phone": "415.555.0132"
+            },
+            "c4": {
+              "name": "Anneli Rostok",
+              "clinic": "Bayside Dental",
+              "npi": "1488003921",
+              "phone": "(415) 555-0771"
+            }
+          }
+        },
+        "questions": {
+          "cand_c1": {
+            "type": "noul",
+            "instructions": "Is candidate c1 the same clinician as the query record under the stated policy?"
+          },
+          "cand_c2": {
+            "type": "noul",
+            "instructions": "Is candidate c2 the same clinician as the query record under the stated policy?"
+          },
+          "cand_c3": {
+            "type": "noul",
+            "instructions": "Is candidate c3 the same clinician as the query record under the stated policy?"
+          },
+          "cand_c4": {
+            "type": "noul",
+            "instructions": "Is candidate c4 the same clinician as the query record under the stated policy?"
+          },
+          "best_candidate": {
+            "type": "choice",
+            "instructions": "Choose the candidate that describes the same clinician as the query record.",
+            "criteria": {
+              "c1": "Candidate c1",
+              "c2": "Candidate c2",
+              "c3": "Candidate c3",
+              "c4": "Candidate c4",
+              "none_of_these": "No candidate describes the query clinician"
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_c1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_c2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_c3": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_c4": {
+          "type": "noul",
+          "expected": false
+        },
+        "best_candidate": {
+          "type": "choice",
+          "expected": "c3"
+        }
+      },
+      "rankings": [
+        {
+          "name": "clinician-candidates",
+          "question_ids": [
+            "cand_c1",
+            "cand_c2",
+            "cand_c3",
+            "cand_c4"
+          ],
+          "expected_order": [
+            "cand_c3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ticket-shortlist-ranking",
+      "difficulty": "medium",
+      "rationale": "Only candidate d2 reports the same problem on the same order as the query ticket; d4 shares the order but a different problem, d1 shares the problem but a different order, and d3 shares neither.",
+      "request": {
+        "state": {
+          "matching_policy": "Two support tickets are duplicates only when they report the same problem for the same order id.",
+          "query_ticket": {
+            "ticket_id": "T-44120",
+            "order_id": "SO-31877",
+            "summary": "Received the wrong size, ordered 9 and got 11"
+          },
+          "candidates": {
+            "d1": {
+              "ticket_id": "T-44002",
+              "order_id": "SO-30991",
+              "summary": "Wrong size delivered, ordered 9 received 11"
+            },
+            "d2": {
+              "ticket_id": "T-44198",
+              "order_id": "SO-31877",
+              "summary": "Size 11 arrived, my order says size 9"
+            },
+            "d3": {
+              "ticket_id": "T-44210",
+              "order_id": "SO-52003",
+              "summary": "Please change the delivery address on my order"
+            },
+            "d4": {
+              "ticket_id": "T-44231",
+              "order_id": "SO-31877",
+              "summary": "Invoice shows the wrong billing country"
+            }
+          }
+        },
+        "questions": {
+          "dup_d1": {
+            "type": "noul",
+            "instructions": "Is candidate d1 a duplicate of the query ticket under the stated policy?"
+          },
+          "dup_d2": {
+            "type": "noul",
+            "instructions": "Is candidate d2 a duplicate of the query ticket under the stated policy?"
+          },
+          "dup_d3": {
+            "type": "noul",
+            "instructions": "Is candidate d3 a duplicate of the query ticket under the stated policy?"
+          },
+          "dup_d4": {
+            "type": "noul",
+            "instructions": "Is candidate d4 a duplicate of the query ticket under the stated policy?"
+          },
+          "duplicate_of": {
+            "type": "choice",
+            "instructions": "Choose the candidate that duplicates the query ticket.",
+            "criteria": {
+              "d1": "Candidate d1",
+              "d2": "Candidate d2",
+              "d3": "Candidate d3",
+              "d4": "Candidate d4",
+              "none_of_these": "No candidate duplicates the query ticket"
+            }
+          }
+        }
+      },
+      "targets": {
+        "dup_d1": {
+          "type": "noul",
+          "expected": false
+        },
+        "dup_d2": {
+          "type": "noul",
+          "expected": true
+        },
+        "dup_d3": {
+          "type": "noul",
+          "expected": false
+        },
+        "dup_d4": {
+          "type": "noul",
+          "expected": false
+        },
+        "duplicate_of": {
+          "type": "choice",
+          "expected": "d2"
+        }
+      },
+      "rankings": [
+        {
+          "name": "ticket-candidates",
+          "question_ids": [
+            "dup_d1",
+            "dup_d2",
+            "dup_d3",
+            "dup_d4"
+          ],
+          "expected_order": [
+            "dup_d2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "supplier-no-matching-candidate",
+      "difficulty": "hard",
+      "rationale": "Every candidate shares a name fragment or the city with the query supplier, but none carries the authoritative DUNS number, so the correct answer is the explicit absent option.",
+      "request": {
+        "state": {
+          "matching_policy": "The DUNS number is the authoritative supplier identifier. A supplier record matches a candidate only when the DUNS numbers agree.",
+          "query_record": {
+            "legal_name": "Petrisco Welding Supply",
+            "city": "Tulsa OK",
+            "duns": "07-421-9938"
+          },
+          "candidates": {
+            "s1": {
+              "legal_name": "Petrisco Welding Supply Co of Texas",
+              "city": "Amarillo TX",
+              "duns": "11-330-4482"
+            },
+            "s2": {
+              "legal_name": "Petrisco Industrial Gases",
+              "city": "Tulsa OK",
+              "duns": "07-421-5510"
+            },
+            "s3": {
+              "legal_name": "Petra Welding Supply",
+              "city": "Tulsa OK",
+              "duns": "22-118-7734"
+            },
+            "s4": {
+              "legal_name": "Petrisco Welding and Fabrication",
+              "city": "Broken Arrow OK",
+              "duns": "07-421-0034"
+            }
+          }
+        },
+        "questions": {
+          "cand_s1": {
+            "type": "noul",
+            "instructions": "Is candidate s1 the same supplier as the query record under the stated policy?"
+          },
+          "cand_s2": {
+            "type": "noul",
+            "instructions": "Is candidate s2 the same supplier as the query record under the stated policy?"
+          },
+          "cand_s3": {
+            "type": "noul",
+            "instructions": "Is candidate s3 the same supplier as the query record under the stated policy?"
+          },
+          "cand_s4": {
+            "type": "noul",
+            "instructions": "Is candidate s4 the same supplier as the query record under the stated policy?"
+          },
+          "best_candidate": {
+            "type": "choice",
+            "instructions": "Choose the candidate that is the same supplier as the query record.",
+            "criteria": {
+              "s1": "Candidate s1",
+              "s2": "Candidate s2",
+              "s3": "Candidate s3",
+              "s4": "Candidate s4",
+              "none_of_these": "No candidate is the same supplier as the query record"
+            }
+          },
+          "any_duns_match": {
+            "type": "noul",
+            "instructions": "Does any candidate carry the same DUNS number as the query record?"
+          }
+        }
+      },
+      "targets": {
+        "cand_s1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_s2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_s3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_s4": {
+          "type": "noul",
+          "expected": false
+        },
+        "best_candidate": {
+          "type": "choice",
+          "expected": "none_of_these"
+        },
+        "any_duns_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "account-merge-buried-in-log",
+      "difficulty": "hard",
+      "rationale": "The account ids agree and the audit log entry in the middle of the state records the phone replacement, so the pair is one account even though the phone fields genuinely differ.",
+      "request": {
+        "state": {
+          "matching_policy": "Customer records are the same account when account_id agrees. A contact field that the audit log shows was deliberately changed does not split an account.",
+          "record_a": {
+            "account_id": "ACCT-90214",
+            "name": "Ilse Brandtner",
+            "phone": "+1 206 555 0147",
+            "email": "ilse.brandtner@fernpost.example",
+            "opened": "2023-04-02"
+          },
+          "record_b": {
+            "account_id": "ACCT-90214",
+            "name": "Ilse Brandtner",
+            "phone": "+1 206 555 0902",
+            "email": "ilse.brandtner@fernpost.example",
+            "opened": "2023-04-02"
+          },
+          "account_audit_log": [
+            "2026-01-09 billing plan changed from monthly to annual",
+            "2026-02-14 marketing preference set to transactional only",
+            "2026-03-02 statement delivery switched to paperless",
+            "2026-04-22 agent replaced the account telephone number after the customer lost the handset; the number +1 206 555 0147 was retired",
+            "2026-05-30 loyalty tier recalculated to silver",
+            "2026-06-11 support note added about a delayed shipment",
+            "2026-07-19 password reset completed by the customer",
+            "2026-08-04 annual renewal invoice issued"
+          ]
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same customer account under the stated policy and the audit log.",
+            "criteria": [
+              "The records describe different customers",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same customer"
+            ]
+          },
+          "account_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same account id?"
+          },
+          "phone_match": {
+            "type": "noul",
+            "instructions": "Do the two records list the same telephone number?",
+            "criteria": {
+              "true": "Both records list the same number",
+              "false": "The records list different numbers, even if the audit log explains the change"
+            }
+          },
+          "email_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same email address?"
+          },
+          "change_explained": {
+            "type": "noul",
+            "instructions": "Does the audit log explain why the telephone numbers differ?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "account_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "phone_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "email_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "change_explained": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "bank-charter-siblings",
+      "difficulty": "hard",
+      "rationale": "The names overlap heavily and the holding company is shared, but the regulator note in the state says the two charters are separate institutions with separate charter ids and separate filings.",
+      "request": {
+        "state": {
+          "matching_policy": "A counterparty record is the same institution as another only when the charter id agrees.",
+          "regulator_note": "Cedarline Bank, N.A. and Cedarline Bank and Trust, N.A. hold separate national charters, file separate call reports, and are owned by one holding company.",
+          "record_a": {
+            "legal_name": "Cedarline Bank, N.A.",
+            "charter_id": "CH-18844",
+            "primary_regulator": "OCC",
+            "holding_company": "Cedarline Financial Group"
+          },
+          "record_b": {
+            "legal_name": "Cedarline Bank and Trust, N.A.",
+            "charter_id": "CH-20317",
+            "primary_regulator": "OCC",
+            "holding_company": "Cedarline Financial Group"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same institution under the stated policy and the regulator note.",
+            "criteria": [
+              "The records describe different institutions",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same institution"
+            ]
+          },
+          "charter_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same charter id?"
+          },
+          "legal_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same registered legal name?"
+          },
+          "holding_company_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same holding company?"
+          },
+          "regulator_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same primary regulator?"
+          },
+          "relationship_fine": {
+            "type": "choice",
+            "instructions": "Classify the specific relationship between the two records.",
+            "criteria": {
+              "duplicate_record": "The same institution entered twice",
+              "predecessor_and_successor": "One institution replaced the other over time",
+              "parent_and_subsidiary": "One institution owns the other",
+              "two_branches_of_one_legal_entity": "Two offices of one chartered institution",
+              "sibling_entities_under_one_owner": "Two chartered institutions that share an owner but neither owns the other",
+              "unrelated_entities": "No documented relationship"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "charter_id_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "legal_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "holding_company_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "regulator_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "relationship_fine": {
+          "type": "choice",
+          "expected": "sibling_entities_under_one_owner"
+        }
+      }
+    },
+    {
+      "name": "paediatric-twins",
+      "difficulty": "hard",
+      "rationale": "Surname, date of birth, guardian, and address all agree because the two patients are siblings born the same day; the given names and medical record numbers differ.",
+      "request": {
+        "state": {
+          "matching_policy": "Within one clinic the medical record number is the authoritative patient identifier.",
+          "record_a": {
+            "given_name": "Aurelia",
+            "family_name": "Sundqvist",
+            "dob": "2019-03-14",
+            "mrn": "MRN-771204",
+            "guardian": "Bo Sundqvist",
+            "address": "18 Harrowgate Ln, Dayton OH"
+          },
+          "record_b": {
+            "given_name": "Mattis",
+            "family_name": "Sundqvist",
+            "dob": "2019-03-14",
+            "mrn": "MRN-771205",
+            "guardian": "Bo Sundqvist",
+            "address": "18 Harrowgate Ln, Dayton OH"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same patient.",
+            "criteria": [
+              "The records describe different patients",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same patient"
+            ]
+          },
+          "given_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same given name?"
+          },
+          "mrn_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same medical record number?"
+          },
+          "dob_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same date of birth?"
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same address?"
+          },
+          "guardian_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same guardian?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "given_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "mrn_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "dob_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "guardian_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "gtin-authoritative-repackaged",
+      "difficulty": "hard",
+      "rationale": "The titles read as two different offers, but the authoritative GTIN, pack size, and net volume all agree, so one product is listed twice with different merchant copy.",
+      "request": {
+        "state": {
+          "matching_policy": "GTIN is the authoritative product identifier in this catalog. Titles are merchant supplied and are not decisive.",
+          "record_a": {
+            "gtin": "00812345601234",
+            "title": "Mirabel Sparkling Yuzu, 12 fl oz can",
+            "pack_size": 6,
+            "net_volume": "12 fl oz"
+          },
+          "record_b": {
+            "gtin": "00812345601234",
+            "title": "Case of 6, Mirabel Yuzu sparkling water cans",
+            "pack_size": 6,
+            "net_volume": "12 fl oz"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same product under the stated policy.",
+            "criteria": [
+              "The records describe different products",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same product"
+            ]
+          },
+          "gtin_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same GTIN?"
+          },
+          "title_match": {
+            "type": "noul",
+            "instructions": "Do the two records use the same title text?",
+            "criteria": {
+              "true": "The titles are the same wording apart from casing and punctuation",
+              "false": "The titles are worded differently, even if they describe one product"
+            }
+          },
+          "pack_size_match": {
+            "type": "noul",
+            "instructions": "Do the two records state the same pack size?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        },
+        "gtin_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "title_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "pack_size_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "occurrence-versus-series",
+      "difficulty": "hard",
+      "rationale": "Title, organizer, and series id all agree, but one record is the recurring series and the other is a single dated occurrence of it, which the policy calls distinct records.",
+      "request": {
+        "state": {
+          "matching_policy": "A recurring series and one dated occurrence of that series are distinct records. An occurrence can be cancelled or moved without touching the series.",
+          "record_a": {
+            "kind": "series",
+            "title": "Incident postmortem",
+            "recurrence": "every second Thursday",
+            "organizer": "Nadia Fourcade",
+            "series_id": "EVT-5521"
+          },
+          "record_b": {
+            "kind": "occurrence",
+            "title": "Incident postmortem",
+            "start": "2026-09-10 15:00",
+            "organizer": "Nadia Fourcade",
+            "series_id": "EVT-5521",
+            "occurrence_id": "EVT-5521-014"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b are the same calendar record under the stated policy.",
+            "criteria": [
+              "The records are different calendar records",
+              "The evidence is mixed and a curator should review the pair",
+              "The records are the same calendar record"
+            ]
+          },
+          "kind_match": {
+            "type": "noul",
+            "instructions": "Do the two records have the same record kind?"
+          },
+          "title_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same title?"
+          },
+          "organizer_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same organizer?"
+          },
+          "series_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same series id?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 1
+        },
+        "kind_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "title_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "organizer_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "series_id_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "contradicted-versus-silent-field",
+      "difficulty": "hard",
+      "rationale": "The NPI is identical so the provider is the same, but the suite numbers contradict each other, which the policy says blocks an automatic merge; the blank licence number is unverified rather than a contradiction, so it is not the blocking field. [audit: score tolerance tightened to 0, because on a three level scale a middle expected level with tolerance 1 accepts every level and reports within_tolerance as a certain pass]",
+      "request": {
+        "state": {
+          "matching_policy": "Merge two provider records only when every compared field agrees. A field that one record leaves blank is unverified, not agreement, and on its own sends the pair to review. A field that the two records fill with conflicting values blocks the merge.",
+          "record_a": {
+            "provider_name": "Halstead Orthopedic Associates",
+            "npi": "1841993027",
+            "license_number": "OR-44812",
+            "mailing_address": "55 Kelbourne Ave, Suite 210, Providence RI"
+          },
+          "record_b": {
+            "provider_name": "Halstead Orthopedic Associates",
+            "npi": "1841993027",
+            "license_number": null,
+            "mailing_address": "55 Kelbourne Ave, Suite 900, Providence RI"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge how the pair should be resolved under the stated policy.",
+            "criteria": [
+              "The records describe different providers",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same provider and may be merged as they stand"
+            ]
+          },
+          "npi_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same NPI?"
+          },
+          "license_match": {
+            "type": "noul",
+            "instructions": "Do both records state the same licence number?",
+            "criteria": {
+              "true": "Both records state a licence number and the numbers are equal",
+              "false": "The numbers differ, or one record leaves the field blank"
+            }
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same mailing address including the suite?"
+          },
+          "provider_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same provider name?"
+          },
+          "blocking_field": {
+            "type": "choice",
+            "instructions": "Choose the field whose conflicting values block an automatic merge under the stated policy.",
+            "criteria": {
+              "none": "No field holds conflicting values",
+              "npi": "The NPI values conflict",
+              "mailing_address": "The mailing address values conflict",
+              "license_number": "The licence number values conflict",
+              "provider_name": "The provider name values conflict"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "npi_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "license_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "provider_name_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "blocking_field": {
+          "type": "choice",
+          "expected": "mailing_address"
+        }
+      }
+    },
+    {
+      "name": "branches-sharing-tax-id",
+      "difficulty": "hard",
+      "rationale": "The shared tax id is the tempting signal, but the policy in the state says a tax id is shared across branches and only a matching branch id makes two records one entity.",
+      "request": {
+        "state": {
+          "matching_policy": "Branch records are the same entity only when branch_id agrees. One tax id is shared by every branch of a company, so a matching tax id is not evidence of a duplicate.",
+          "record_a": {
+            "branch_id": "BR-ALD-N",
+            "display_name": "Alderman Plumbing, North Branch",
+            "tax_id": "84-2217903",
+            "address": "900 Weyler St, Akron OH",
+            "service_area": "north county"
+          },
+          "record_b": {
+            "branch_id": "BR-ALD-S",
+            "display_name": "Alderman Plumbing, South Branch",
+            "tax_id": "84-2217903",
+            "address": "77 Coldwater Rd, Akron OH",
+            "service_area": "south county"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b are the same branch entity under the stated policy.",
+            "criteria": [
+              "The records describe different entities",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same entity"
+            ]
+          },
+          "branch_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same branch id?"
+          },
+          "tax_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same tax id?"
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same address?"
+          },
+          "relationship_broad": {
+            "type": "choice",
+            "instructions": "Classify the relationship between the two records at the broad level.",
+            "criteria": {
+              "same_entity": "One entity recorded twice",
+              "related_but_distinct": "Two distinct records with a documented relationship",
+              "unrelated": "No relationship is stated or implied"
+            }
+          },
+          "relationship_fine": {
+            "type": "choice",
+            "instructions": "Classify the specific relationship between the two records.",
+            "criteria": {
+              "duplicate_record": "The same branch entered twice",
+              "predecessor_and_successor": "One branch replaced the other over time",
+              "parent_and_subsidiary": "One record owns the other",
+              "two_branches_of_one_company": "Two branches of one company",
+              "sibling_entities_under_one_owner": "Two separately registered companies with one owner",
+              "unrelated_entities": "No documented relationship"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 1
+        },
+        "branch_id_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "tax_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "relationship_broad": {
+          "type": "choice",
+          "expected": "related_but_distinct"
+        },
+        "relationship_fine": {
+          "type": "choice",
+          "expected": "two_branches_of_one_company"
+        }
+      }
+    },
+    {
+      "name": "claim-number-transposition",
+      "difficulty": "hard",
+      "rationale": "Claimant, policy, and loss date agree and the claim numbers differ only by transposed digits, which is exactly the pattern the stated policy routes to review rather than to a merge. [audit: score tolerance tightened to 0, because on a three level scale a middle expected level with tolerance 1 accepts every level and reports within_tolerance as a certain pass]",
+      "request": {
+        "state": {
+          "matching_policy": "When two claim numbers differ but claimant, policy number, and loss date agree, the pair is a review case. Claims are never merged automatically on a near match of the claim number.",
+          "record_a": {
+            "claim_number": "CLM-48217",
+            "claimant": "Teodor Ravnik",
+            "policy_number": "HO-773215",
+            "loss_date": "2026-05-02",
+            "loss_description": "kitchen water damage",
+            "adjuster": "P. Whitcomb"
+          },
+          "record_b": {
+            "claim_number": "CLM-48271",
+            "claimant": "Teodor Ravnik",
+            "policy_number": "HO-773215",
+            "loss_date": "2026-05-02",
+            "loss_description": "water damage in the kitchen",
+            "adjuster": "R. Nkemelu"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge how the pair should be resolved under the stated policy.",
+            "criteria": [
+              "The records describe different claims",
+              "The evidence is mixed and an adjuster should review the pair",
+              "The records describe the same claim and may be merged as they stand"
+            ]
+          },
+          "claim_number_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same claim number?"
+          },
+          "claimant_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same claimant?"
+          },
+          "policy_number_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same policy number?"
+          },
+          "adjuster_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same adjuster?"
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "Choose the resolution action required by the stated policy.",
+            "criteria": {
+              "merge_records": "Merge the two claims now",
+              "send_to_review": "Send the pair to an adjuster for review",
+              "keep_separate": "Record the claims as unrelated and take no further action",
+              "close_both_claims": "Close both claim records"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "claim_number_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "claimant_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "policy_number_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "adjuster_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "action": {
+          "type": "choice",
+          "expected": "send_to_review"
+        }
+      }
+    },
+    {
+      "name": "registry-lookup-inconclusive",
+      "difficulty": "hard",
+      "rationale": "The name difference looks like a rename and the address agrees, but record_b states no registration number and the registry check returned inconclusive, so the policy leaves the pair in review. [audit: score tolerance tightened to 0, because on a three level scale a middle expected level with tolerance 1 accepts every level and reports within_tolerance as a certain pass]",
+      "request": {
+        "state": {
+          "matching_policy": "A documented legal name change makes two records the same company. An undocumented name difference is a review case, and an inconclusive registry check does not count as documentation.",
+          "record_a": {
+            "legal_name": "Quorrey Fabrication Ltd",
+            "registration_number": "SC 418902",
+            "address": "14 Dunvale Way, Glasgow",
+            "sector": "metal fabrication"
+          },
+          "record_b": {
+            "legal_name": "Quorrey Advanced Fabrication Ltd",
+            "registration_number": null,
+            "address": "14 Dunvale Way, Glasgow",
+            "sector": "metal fabrication"
+          },
+          "registry_check": {
+            "status": "inconclusive",
+            "note": "The registry index was incomplete for the requested period and returned no filing either confirming or denying a name change."
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge how the pair should be resolved under the stated policy.",
+            "criteria": [
+              "The records describe different companies",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same company and may be merged as they stand"
+            ]
+          },
+          "legal_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same legal name string?"
+          },
+          "registration_match": {
+            "type": "noul",
+            "instructions": "Do both records state the same registration number?",
+            "criteria": {
+              "true": "Both records state a registration number and the numbers are equal",
+              "false": "The numbers differ, or one record leaves the field blank"
+            }
+          },
+          "address_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same registered address?"
+          },
+          "name_change_documented": {
+            "type": "noul",
+            "instructions": "Does the state document a legal name change between the two names?",
+            "criteria": {
+              "true": "A filing or note in the state confirms the name change",
+              "false": "No filing confirms it, including when the registry check is inconclusive"
+            }
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "legal_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "registration_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "address_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "name_change_documented": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "shipment-same-tracking-relabelled",
+      "difficulty": "hard",
+      "rationale": "The carrier tracking number is authoritative and identical, and the consignee note explains the relabelled recipient name, so one shipment is recorded twice despite the differing recipient and destination text.",
+      "request": {
+        "state": {
+          "matching_policy": "The carrier tracking number is the authoritative shipment identifier. Two records with the same tracking number are one shipment.",
+          "consignee_note": "The receiving company changed its trading name from Orsley Provisions to Orsley Foods during transit, and the destination label was reprinted at the depot with the new name and the same warehouse bay.",
+          "record_a": {
+            "tracking": "1Z99AA10-4471-2203",
+            "recipient": "Orsley Provisions",
+            "destination": "Bay 4, Linden Cross Depot",
+            "weight_kg": 318
+          },
+          "record_b": {
+            "tracking": "1Z99AA10-4471-2203",
+            "recipient": "Orsley Foods",
+            "destination": "Linden Cross Depot, bay 4",
+            "weight_kg": 318
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same shipment under the stated policy.",
+            "criteria": [
+              "The records describe different shipments",
+              "The evidence is mixed and a clerk should review the pair",
+              "The records describe the same shipment"
+            ]
+          },
+          "tracking_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same tracking number?"
+          },
+          "recipient_string_match": {
+            "type": "noul",
+            "instructions": "Do the two records print the same recipient name string?",
+            "criteria": {
+              "true": "The recipient strings are the same name",
+              "false": "The recipient strings are different names, even when the state explains the change"
+            }
+          },
+          "destination_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same depot and bay, ignoring word order?"
+          },
+          "weight_match": {
+            "type": "noul",
+            "instructions": "Do the two records state the same weight?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "tracking_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "recipient_string_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "destination_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "weight_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "device-replaced-under-warranty",
+      "difficulty": "hard",
+      "rationale": "The service note says the unit was replaced under warranty and the asset id was carried over, so the records describe two physical devices; the policy makes the serial authoritative and the serials differ.",
+      "request": {
+        "state": {
+          "matching_policy": "The serial number identifies a physical device. An asset id is an inventory label that may be reassigned to a replacement unit.",
+          "service_note": "The original unit failed in June and was replaced under warranty. The technician reused the existing asset id label on the replacement so that the room inventory would not have to be reprinted.",
+          "record_a": {
+            "asset_id": "AV-2207",
+            "serial": "SN-77104-A",
+            "model": "Calder 9 projector",
+            "room": "Training 3",
+            "recorded": "2025-09-12"
+          },
+          "record_b": {
+            "asset_id": "AV-2207",
+            "serial": "SN-90558-C",
+            "model": "Calder 9 projector",
+            "room": "Training 3",
+            "recorded": "2026-06-28"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same physical device under the stated policy.",
+            "criteria": [
+              "The records describe different physical devices",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same physical device"
+            ]
+          },
+          "serial_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same serial number?"
+          },
+          "asset_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same asset id?"
+          },
+          "model_match": {
+            "type": "noul",
+            "instructions": "Do the two records name the same model?"
+          },
+          "replacement_documented": {
+            "type": "noul",
+            "instructions": "Does the state document that one unit replaced the other?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        },
+        "serial_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "asset_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "model_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "replacement_documented": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "donor-household-merge-request",
+      "difficulty": "medium",
+      "rationale": "The donor id agrees and the stated policy makes it authoritative, so the pair is one donor; the mailing name changed after a marriage, which the state documents.",
+      "request": {
+        "state": {
+          "matching_policy": "Donor records are the same donor when donor_id agrees. A changed mailing name does not split a donor record.",
+          "household_note": "The donor asked that the mailing name be updated to the married surname Ferrante-Osei in March 2026. The donor id was unchanged.",
+          "record_a": {
+            "donor_id": "D-40915",
+            "mailing_name": "Adaeze Osei",
+            "email": "a.osei@brightwater-mail.example",
+            "last_gift": "2025-12-18"
+          },
+          "record_b": {
+            "donor_id": "D-40915",
+            "mailing_name": "Adaeze Ferrante-Osei",
+            "email": "a.osei@brightwater-mail.example",
+            "last_gift": "2026-06-05"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same donor under the stated policy.",
+            "criteria": [
+              "The records describe different donors",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same donor"
+            ]
+          },
+          "donor_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same donor id?"
+          },
+          "mailing_name_match": {
+            "type": "noul",
+            "instructions": "Do the two records print the same mailing name string?",
+            "criteria": {
+              "true": "The mailing name strings are the same",
+              "false": "The mailing name strings differ, even when the state explains the change"
+            }
+          },
+          "email_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same email address?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "donor_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "mailing_name_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "email_match": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "employee-rehire-same-person",
+      "difficulty": "medium",
+      "rationale": "The national identifier agrees and the policy makes it authoritative for a person, so the two employment records belong to one person even though the employee numbers and departments differ.",
+      "request": {
+        "state": {
+          "matching_policy": "For person matching the national identifier is authoritative. An employee number is issued per employment spell and a rehire receives a new one.",
+          "record_a": {
+            "employee_number": "E-10442",
+            "name": "Tobias Ferreira-Lund",
+            "national_id": "PN-8840-2291",
+            "department": "Warehouse",
+            "employment": "2021-03-01 to 2023-09-30"
+          },
+          "record_b": {
+            "employee_number": "E-19887",
+            "name": "Tobias Ferreira Lund",
+            "national_id": "PN-8840-2291",
+            "department": "Dispatch",
+            "employment": "2026-02-16 to present"
+          }
+        },
+        "questions": {
+          "match": {
+            "type": "score",
+            "instructions": "Judge whether record_a and record_b describe the same person under the stated policy.",
+            "criteria": [
+              "The records describe different people",
+              "The evidence is mixed and a curator should review the pair",
+              "The records describe the same person"
+            ]
+          },
+          "national_id_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same national identifier?"
+          },
+          "employee_number_match": {
+            "type": "noul",
+            "instructions": "Do the two records carry the same employee number?"
+          },
+          "name_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same personal name, allowing a hyphen in place of a space?"
+          },
+          "department_match": {
+            "type": "noul",
+            "instructions": "Do the two records give the same department?"
+          }
+        }
+      },
+      "targets": {
+        "match": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 1
+        },
+        "national_id_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "employee_number_match": {
+          "type": "noul",
+          "expected": false
+        },
+        "name_match": {
+          "type": "noul",
+          "expected": true
+        },
+        "department_match": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    }
+  ]
+}

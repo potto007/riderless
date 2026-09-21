@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a change and explain the problem it would solve.
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues and the
+        [architecture decisions](https://github.com/OWNER/systemone-local/tree/main/docs/decisions)
+        before opening a request. Link related work below.
+
+        This is a non-generative decision API: it reads final-position logits
+        over single-token labels and emits zero generated tokens. Proposals
+        that add sampling or generated output are out of scope, as are
+        proposals that vendor third-party code or model weights, or that ask
+        for measurements of a third-party hosted API. See the
+        [contribution guide](https://github.com/OWNER/systemone-local/blob/main/.github/CONTRIBUTING.md).
+        Participation follows the [Code of Conduct](https://github.com/OWNER/systemone-local/blob/main/.github/CODE_OF_CONDUCT.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what prevents it today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the result you want and how you would use it. Include an example request and the response you would expect.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any current workaround and its limitations.
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues or decisions
+      description: Link any existing discussion or architecture decision record.

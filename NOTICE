@@ -1,0 +1,66 @@
+systemone-local
+Copyright 2026 Paul Otto
+
+This product includes software developed by Paul Otto.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations under
+the License.
+
+-------------------------------------------------------------------------------
+Third-party software NOT redistributed here
+-------------------------------------------------------------------------------
+
+This repository vendors no third-party source. The items below are fetched,
+built, or downloaded by the user on their own machine, under their own terms.
+
+llama.cpp (MIT License)
+    https://github.com/ggml-org/llama.cpp
+    The native worker in systemone/api/native is compiled against a llama.cpp
+    checkout that the user provides at a pinned revision. Its headers, its
+    bundled nlohmann/json, and its examples/gguf-hash/deps/sha256 helper are
+    read from that checkout at build time. No llama.cpp or ggml file is copied
+    into this repository and none is distributed with it. The MIT license text
+    ships with llama.cpp itself.
+
+Gemma model weights (Gemma Terms of Use)
+    No model weights are included, mirrored, or redistributed here. The user
+    downloads the GGUF they want and accepts Google's Gemma Terms of Use and
+    Prohibited Use Policy directly.
+
+-------------------------------------------------------------------------------
+Separately licensed documents in this repository
+-------------------------------------------------------------------------------
+
+.github/CODE_OF_CONDUCT.md
+    Adapted from the Contributor Covenant, version 3.0, stewarded by the
+    Organization for Ethical Source, and licensed under Creative Commons
+    Attribution-ShareAlike 4.0 International (CC BY-SA 4.0). That file keeps
+    the CC BY-SA 4.0 license separately from this repository's Apache-2.0
+    software license.
+    https://www.contributor-covenant.org/version/3/0/
+    https://creativecommons.org/licenses/by-sa/4.0/
+
+-------------------------------------------------------------------------------
+Independence
+-------------------------------------------------------------------------------
+
+The request and response shape of this project's decision API follows
+TypeSafe's publicly documented Jev interface so that callers can reuse a
+familiar payload shape. This project is independent software. It is not
+affiliated with, sponsored by, or endorsed by TypeSafe, and it makes no claim
+of parity with any TypeSafe product. TypeSafe and Jev are the marks of their
+respective owner and are used here only to describe that lineage.
+
+SemIf is an unrelated open-source project. This repository implements a
+compatible JSONL row shape as a caller convenience, vendors none of its code,
+and is not affiliated with or endorsed by it. The name is used only to identify
+that row format.

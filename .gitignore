@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Native build trees and the llama.cpp base runtime
+build/
+cmake-build-*/
+
+# Model weights are never committed: download the GGUF yourself.
+models/
+*.gguf
+
+# Run artifacts from the validation and use case drivers
+outputs/
+*.log

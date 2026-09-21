@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/OWNER/systemone-local/security/advisories/new
+    about: Send suspected vulnerabilities privately; keep exploit details out of public issues.
+  - name: Report a conduct concern
+    url: https://github.com/OWNER/systemone-local/blob/main/.github/CODE_OF_CONDUCT.md#reporting-and-enforcement
+    about: Use the private contact listed in the Code of Conduct.
+  - name: Contribution guide
+    url: https://github.com/OWNER/systemone-local/blob/main/.github/CONTRIBUTING.md
+    about: Development setup, checks, and the pull request workflow.
+  - name: Architecture decisions
+    url: https://github.com/OWNER/systemone-local/tree/main/docs/decisions
+    about: Why the API is non-generative and how the native worker is pinned.

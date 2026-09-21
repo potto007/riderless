@@ -1,0 +1,3521 @@
+{
+  "suite": "candidate-span-and-date-extraction",
+  "family": "Structured and candidate-span extraction, including dates and document structure",
+  "source": [
+    "pre_parsed_value_extraction_cookbook",
+    "date_extraction_cookbook",
+    "autoformat",
+    "Candidate and structured extraction row of the build-spec pattern table"
+  ],
+  "description": "Measures whether the non-generative decision API can select a verbatim candidate span, decompose a date expression into parts that code resolves, and recover document structure from extracted lines. Three families share the file: span selection with an explicit none option, date-component Choices, and autoformat join Nouls plus block-type Choices with speculative companions. Day of month is deliberately split into a ten-day band Choice (day_tens) and a final-digit Choice (day_unit) because 31 day options would exceed the 26 single-token label ceiling; a miss on one of those two questions is a split-encoding failure and must not be read as a general date failure. Report per-question exact match plus a whole-record exact match rate over all questions of a case, precision and recall of the none option on the span cases, and the date cases split by gold mode so that relative-mode and absolute-mode accuracy stay separate numbers. Date targets stop at the component Choices and never at a resolved calendar date, because the cookbook keeps calendar arithmetic in code; relative-mode and absolute-mode accuracy should be reported separately. The suite does not measure string generation, retrieval, arithmetic, calibration of the returned probabilities, or any behaviour outside a single 2048-token prefill per question.",
+  "cases": [
+    {
+      "name": "invoice-total-vs-subtotal",
+      "difficulty": "medium",
+      "rationale": "The document labels one line 'Total due on this invoice' and states that the prior balance is invoiced separately, so the grand-total span is the gold and the prior balance is excluded by explicit text, not arithmetic.",
+      "request": {
+        "state": {
+          "source": "invoice_pdf_page_1",
+          "document_text": "ACME Fabrication LLC\nInvoice INV-2026-0417\nBill to: Northwind Labs\nSubtotal 3,910.00 USD\nFreight 180.00 USD\nSales tax (8.25%) 337.43 USD\nPrior balance carried forward 1,204.00 USD\nTotal due on this invoice 4,427.43 USD\nPlease remit the total due only. The prior balance carried forward is invoiced separately and is not part of the total due.",
+          "candidate_spans": [
+            "3,910.00",
+            "180.00",
+            "337.43",
+            "1,204.00",
+            "4,427.43"
+          ]
+        },
+        "questions": {
+          "total_due_span": {
+            "type": "choice",
+            "instructions": [
+              "Select the supplied candidate span that is the total amount due on this invoice.",
+              "Select a supplied span verbatim. Do not create a value."
+            ],
+            "criteria": {
+              "3,910.00": "The subtotal line",
+              "180.00": "The freight line",
+              "337.43": "The sales tax line",
+              "1,204.00": "The prior balance carried forward line",
+              "4,427.43": "The total due on this invoice line",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "prior_balance_included": {
+            "type": "noul",
+            "instructions": "The document states that the total due on this invoice includes the prior balance carried forward."
+          },
+          "freight_listed_separately": {
+            "type": "noul",
+            "instructions": "The document lists a freight charge on a line of its own, separate from the subtotal."
+          },
+          "currency": {
+            "type": "choice",
+            "instructions": "Which currency do the amounts in this document use?",
+            "criteria": {
+              "EUR": "Euro",
+              "GBP": "Pound sterling",
+              "USD": "United States dollar",
+              "not_stated": "No currency is written in the document"
+            }
+          }
+        }
+      },
+      "targets": {
+        "total_due_span": {
+          "type": "choice",
+          "expected": "4,427.43"
+        },
+        "prior_balance_included": {
+          "type": "noul",
+          "expected": false
+        },
+        "freight_listed_separately": {
+          "type": "noul",
+          "expected": true
+        },
+        "currency": {
+          "type": "choice",
+          "expected": "USD"
+        }
+      }
+    },
+    {
+      "name": "purchase-order-number-absent",
+      "difficulty": "easy",
+      "rationale": "The finder returned three identifiers and the document labels each one. None of them is a purchase order number and the text says the buyer raised no purchase order, so 'none' is gold.",
+      "request": {
+        "state": {
+          "source": "supplier_portal_export",
+          "document_text": "Invoice INV-2026-0417 was raised against sales order SO-88213 for customer number CUST-4471. The buyer confirmed by email that they work without purchase orders, so no purchase order number exists for this transaction.",
+          "candidate_spans": [
+            "INV-2026-0417",
+            "SO-88213",
+            "CUST-4471"
+          ]
+        },
+        "questions": {
+          "purchase_order_span": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the purchase order number.",
+            "criteria": {
+              "INV-2026-0417": "The invoice identifier",
+              "SO-88213": "The sales order identifier",
+              "CUST-4471": "The customer account identifier",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "invoice_span": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the invoice number.",
+            "criteria": {
+              "CUST-4471": "The customer account identifier",
+              "INV-2026-0417": "The invoice identifier",
+              "SO-88213": "The sales order identifier",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "po_absence_stated": {
+            "type": "noul",
+            "instructions": "The document text explicitly explains why no purchase order number is present."
+          }
+        }
+      },
+      "targets": {
+        "purchase_order_span": {
+          "type": "choice",
+          "expected": "none"
+        },
+        "invoice_span": {
+          "type": "choice",
+          "expected": "INV-2026-0417"
+        },
+        "po_absence_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "contract-effective-vs-signature-dates",
+      "difficulty": "medium",
+      "rationale": "Five date spans of the same type sit next to each other. The document labels the effective date explicitly and says it does not depend on the signatures, and the later of the two signature dates is named in the text. [difficulty relabelled hard to medium in audit: every gold is a verbatim label, only the decoy density is raised]",
+      "request": {
+        "state": {
+          "source": "master_services_agreement_execution_copy",
+          "document_text": "MASTER SERVICES AGREEMENT (execution copy)\nPrinted 11 January 2026 by the contracts desk.\nSigned by Harlow Interiors on 2 February 2026 and by Bex Logistics on 5 February 2026, which is the later of the two signatures.\nThis Agreement takes effect on 1 March 2026 regardless of when the last signature is affixed.\nThe first invoice under this Agreement is dated 15 March 2026.",
+          "candidate_spans": [
+            "11 January 2026",
+            "2 February 2026",
+            "5 February 2026",
+            "1 March 2026",
+            "15 March 2026"
+          ]
+        },
+        "questions": {
+          "effective_date_span": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the effective date of the Agreement.",
+            "criteria": {
+              "11 January 2026": "The printing date",
+              "2 February 2026": "The first signature date",
+              "5 February 2026": "The later signature date",
+              "1 March 2026": "The date the Agreement takes effect",
+              "15 March 2026": "The first invoice date",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "last_signature_span": {
+            "type": "choice",
+            "instructions": "Select the supplied span that the document names as the later of the two signature dates.",
+            "criteria": {
+              "15 March 2026": "The first invoice date",
+              "1 March 2026": "The date the Agreement takes effect",
+              "5 February 2026": "The later signature date",
+              "2 February 2026": "The first signature date",
+              "11 January 2026": "The printing date",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "effective_depends_on_signature": {
+            "type": "noul",
+            "instructions": "The document states that the effective date depends on when the last signature is affixed.",
+            "criteria": {
+              "true": "The text makes the effective date conditional on the signatures",
+              "false": "The text makes the effective date independent of the signatures"
+            }
+          },
+          "effective_date_independent": {
+            "type": "noul",
+            "instructions": "The document states that the Agreement takes effect on its stated date whatever the signature dates are."
+          },
+          "labelled_date_roles": {
+            "type": "score",
+            "instructions": "How many of these three date roles does the document text label explicitly: the printing date, a signature date, the effective date?",
+            "criteria": [
+              "None of the three roles is labelled",
+              "One of the three roles is labelled",
+              "Two of the three roles are labelled",
+              "All three roles are labelled"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "effective_date_span": {
+          "type": "choice",
+          "expected": "1 March 2026"
+        },
+        "last_signature_span": {
+          "type": "choice",
+          "expected": "5 February 2026"
+        },
+        "effective_depends_on_signature": {
+          "type": "noul",
+          "expected": false
+        },
+        "effective_date_independent": {
+          "type": "noul",
+          "expected": true
+        },
+        "labelled_date_roles": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "shipping-vs-billing-postcode",
+      "difficulty": "easy",
+      "rationale": "Each postcode is directly labelled with its role in the order record, and the two addresses name two different cities.",
+      "request": {
+        "state": "Order SO-77120.\nBilling address: 4 Kestrel Row, Leeds LS6 3QW.\nShipping address: Unit 9 Harbour Way, Bristol BS1 5TF.\nA previous shipment on this account went to Cardiff CF10 2HB and was returned to us undelivered.\nCandidate postcode spans found by the parser: LS6 3QW, BS1 5TF, CF10 2HB.",
+        "questions": {
+          "shipping_postcode": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the shipping postcode for order SO-77120.",
+            "criteria": {
+              "LS6 3QW": "Leeds",
+              "BS1 5TF": "Bristol",
+              "CF10 2HB": "Cardiff",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "billing_postcode": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the billing postcode for order SO-77120.",
+            "criteria": {
+              "CF10 2HB": "Cardiff",
+              "BS1 5TF": "Bristol",
+              "LS6 3QW": "Leeds",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "returned_shipment_postcode": {
+            "type": "choice",
+            "instructions": "Select the candidate span for the shipment that was returned undelivered.",
+            "criteria": {
+              "BS1 5TF": "Bristol",
+              "CF10 2HB": "Cardiff",
+              "LS6 3QW": "Leeds",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "same_city": {
+            "type": "noul",
+            "instructions": "The billing address and the shipping address are in the same city."
+          },
+          "distinct_postcodes": {
+            "type": "noul",
+            "instructions": "Order SO-77120 records a different postcode for shipping than for billing."
+          }
+        }
+      },
+      "targets": {
+        "shipping_postcode": {
+          "type": "choice",
+          "expected": "BS1 5TF"
+        },
+        "billing_postcode": {
+          "type": "choice",
+          "expected": "LS6 3QW"
+        },
+        "returned_shipment_postcode": {
+          "type": "choice",
+          "expected": "CF10 2HB"
+        },
+        "same_city": {
+          "type": "noul",
+          "expected": false
+        },
+        "distinct_postcodes": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "medical-record-vs-encounter-id",
+      "difficulty": "hard",
+      "rationale": "The three identifiers differ only in the final digit and the chart lists them in the reverse of the order the question asks about. The text states that the prior authorisation form requires the medical record number and not the encounter identifier.",
+      "request": {
+        "state": {
+          "chart_header": "Account 4471-884, Encounter ID 4471-883, MRN 4471-882. Admitting clinic: Ridgeway Orthopaedics.",
+          "form_rule": "The prior authorisation form must carry the patient medical record number. Submitting the encounter identifier or the account number in that field causes an automatic rejection.",
+          "candidate_spans": [
+            "4471-884",
+            "4471-883",
+            "4471-882"
+          ]
+        },
+        "questions": {
+          "prior_auth_identifier": {
+            "type": "choice",
+            "instructions": "Select the supplied span that belongs in the prior authorisation form field.",
+            "criteria": {
+              "4471-884": "The account number",
+              "4471-883": "The encounter identifier",
+              "4471-882": "The medical record number",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "encounter_identifier": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the encounter identifier.",
+            "criteria": {
+              "4471-882": "The medical record number",
+              "4471-884": "The account number",
+              "4471-883": "The encounter identifier",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "account_is_required_value": {
+            "type": "noul",
+            "instructions": "The account number is the value the prior authorisation form requires."
+          },
+          "rejection_rule_stated": {
+            "type": "noul",
+            "instructions": "The state says what happens when the wrong identifier is submitted in that field."
+          }
+        }
+      },
+      "targets": {
+        "prior_auth_identifier": {
+          "type": "choice",
+          "expected": "4471-882"
+        },
+        "encounter_identifier": {
+          "type": "choice",
+          "expected": "4471-883"
+        },
+        "account_is_required_value": {
+          "type": "noul",
+          "expected": false
+        },
+        "rejection_rule_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "support-ticket-order-id-absent",
+      "difficulty": "medium",
+      "rationale": "All three candidate spans are identifiers of other kinds and the customer states outright that no order number is available, so 'none' is gold for the order question while the tracking question has a real answer.",
+      "request": {
+        "state": {
+          "channel": "email",
+          "customer_message": "Hi, my parcel never arrived. The tracking page shows TRK-99120 and my account number is AC-55031. I was charged on the card ending 4417. I have searched my inbox and I cannot find any order number anywhere, the confirmation email never arrived.",
+          "candidate_spans": [
+            "TRK-99120",
+            "AC-55031",
+            "4417"
+          ]
+        },
+        "questions": {
+          "order_identifier": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the order number for this purchase.",
+            "criteria": {
+              "TRK-99120": "The tracking identifier",
+              "AC-55031": "The customer account number",
+              "4417": "The last four digits of the payment card",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "tracking_identifier": {
+            "type": "choice",
+            "instructions": "Select the supplied span that is the tracking identifier.",
+            "criteria": {
+              "4417": "The last four digits of the payment card",
+              "TRK-99120": "The tracking identifier",
+              "AC-55031": "The customer account number",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "customer_supplied_order_number": {
+            "type": "noul",
+            "instructions": "The customer supplied an order number."
+          },
+          "tracking_supplied": {
+            "type": "noul",
+            "instructions": "The customer supplied a tracking identifier."
+          },
+          "order_identifier_count": {
+            "type": "score",
+            "instructions": "How many of the supplied candidate spans are order numbers for this purchase?",
+            "criteria": [
+              "None of the candidate spans is an order number",
+              "Exactly one candidate span is an order number",
+              "Exactly two candidate spans are order numbers",
+              "Three or more candidate spans are order numbers"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "order_identifier": {
+          "type": "choice",
+          "expected": "none"
+        },
+        "tracking_identifier": {
+          "type": "choice",
+          "expected": "TRK-99120"
+        },
+        "customer_supplied_order_number": {
+          "type": "noul",
+          "expected": false
+        },
+        "tracking_supplied": {
+          "type": "noul",
+          "expected": true
+        },
+        "order_identifier_count": {
+          "type": "score",
+          "expected_level": 0,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "part-number-owner-and-role",
+      "difficulty": "medium",
+      "rationale": "Three part identifiers appear, two of them ours and differing by one letter. The report labels which one failed, which one replaced it, and says the supplier number designates the same component.",
+      "request": {
+        "state": "Field report FR-2201, pump skid 4.\nThe failed component is our part number PN-4480-B.\nThe supplier's catalogue number for that same component is SUP-9920-XT.\nThe replacement we installed on site is our part number PN-4480-C.\nParser candidates: PN-4480-B, SUP-9920-XT, PN-4480-C.",
+        "questions": {
+          "replacement_part_span": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is our part number for the component installed as the replacement.",
+            "criteria": {
+              "PN-4480-B": "Our part number for the failed component",
+              "SUP-9920-XT": "The supplier catalogue number",
+              "PN-4480-C": "Our part number for the installed replacement",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "failed_part_span": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is our part number for the component that failed.",
+            "criteria": {
+              "SUP-9920-XT": "The supplier catalogue number",
+              "PN-4480-C": "Our part number for the installed replacement",
+              "PN-4480-B": "Our part number for the failed component",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "supplier_number_span": {
+            "type": "choice",
+            "instructions": "Select the candidate span issued by the supplier rather than by us.",
+            "criteria": {
+              "PN-4480-C": "Our part number for the installed replacement",
+              "SUP-9920-XT": "The supplier catalogue number",
+              "PN-4480-B": "Our part number for the failed component",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "supplier_number_is_other_component": {
+            "type": "noul",
+            "instructions": "The supplier catalogue number designates a different component from the one that failed."
+          },
+          "replacement_number_differs": {
+            "type": "noul",
+            "instructions": "Our part number for the installed replacement differs from our part number for the component that failed."
+          }
+        }
+      },
+      "targets": {
+        "replacement_part_span": {
+          "type": "choice",
+          "expected": "PN-4480-C"
+        },
+        "failed_part_span": {
+          "type": "choice",
+          "expected": "PN-4480-B"
+        },
+        "supplier_number_span": {
+          "type": "choice",
+          "expected": "SUP-9920-XT"
+        },
+        "supplier_number_is_other_component": {
+          "type": "noul",
+          "expected": false
+        },
+        "replacement_number_differs": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "refund-quoted-but-declined",
+      "difficulty": "hard",
+      "rationale": "Three money spans are present but the notes say finance declined the refund and nothing was paid back on this order, so no span is the amount refunded here. The 5.00 EUR span was refunded, but on a different order, which makes the past-refund noul true while the amount question is 'none'.",
+      "request": {
+        "state": {
+          "order": "DE-90214",
+          "case_notes": "The agent quoted the customer a refund of 64.90 EUR plus a goodwill credit of 10.00 EUR. Finance reviewed the case and declined the refund. Nothing has been paid back to the customer on order DE-90214. Note for context: a 5.00 EUR shipping fee was refunded to this same customer last month on order DE-88710.",
+          "candidate_spans": [
+            "64.90",
+            "10.00",
+            "5.00"
+          ]
+        },
+        "questions": {
+          "amount_refunded_this_order": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the amount actually refunded on order DE-90214.",
+            "criteria": {
+              "64.90": "The quoted refund amount",
+              "10.00": "The quoted goodwill credit",
+              "5.00": "The shipping fee refunded on order DE-88710",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "quoted_refund_amount": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the refund amount the agent quoted.",
+            "criteria": {
+              "5.00": "The shipping fee refunded on order DE-88710",
+              "10.00": "The quoted goodwill credit",
+              "64.90": "The quoted refund amount",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "money_returned_this_order": {
+            "type": "noul",
+            "instructions": "Money has been returned to the customer on order DE-90214."
+          },
+          "customer_ever_refunded": {
+            "type": "noul",
+            "instructions": "This customer has received a refund at some point, on any order described in the notes."
+          }
+        }
+      },
+      "targets": {
+        "amount_refunded_this_order": {
+          "type": "choice",
+          "expected": "none"
+        },
+        "quoted_refund_amount": {
+          "type": "choice",
+          "expected": "64.90"
+        },
+        "money_returned_this_order": {
+          "type": "noul",
+          "expected": false
+        },
+        "customer_ever_refunded": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "notice-address-by-party",
+      "difficulty": "medium",
+      "rationale": "Three addresses are labelled by party and by purpose. The invoice address for the Company is a different street from its notice address, which the clause states directly.",
+      "request": {
+        "state": "Clause 14, Notices.\nNotices to the Company go to 12 Ashgrove Terrace, Dublin 2.\nNotices to the Contractor go to 88 Quay Street, Galway.\nInvoices, which are not notices, go to the Company finance office at 3 Riverside Park, Cork.\nAddress spans found by the parser are listed as options.",
+        "questions": {
+          "contractor_notice_address": {
+            "type": "choice",
+            "instructions": "Select the span that is the address for notices to the Contractor.",
+            "criteria": {
+              "12 Ashgrove Terrace, Dublin 2": "Notices to the Company",
+              "88 Quay Street, Galway": "Notices to the Contractor",
+              "3 Riverside Park, Cork": "The Company finance office",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "company_invoice_address": {
+            "type": "choice",
+            "instructions": "Select the span that is the address invoices to the Company must be sent to.",
+            "criteria": {
+              "88 Quay Street, Galway": "Notices to the Contractor",
+              "12 Ashgrove Terrace, Dublin 2": "Notices to the Company",
+              "3 Riverside Park, Cork": "The Company finance office",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "company_notices_and_invoices_same_address": {
+            "type": "noul",
+            "instructions": "Notices to the Company and invoices to the Company go to the same street address."
+          },
+          "invoices_excluded_from_notices": {
+            "type": "noul",
+            "instructions": "The clause says in so many words that invoices are not notices."
+          }
+        }
+      },
+      "targets": {
+        "contractor_notice_address": {
+          "type": "choice",
+          "expected": "88 Quay Street, Galway"
+        },
+        "company_invoice_address": {
+          "type": "choice",
+          "expected": "3 Riverside Park, Cork"
+        },
+        "company_notices_and_invoices_same_address": {
+          "type": "noul",
+          "expected": false
+        },
+        "invoices_excluded_from_notices": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "iban-span-and-normalizer",
+      "difficulty": "medium",
+      "rationale": "The remittance block labels the IBAN, the BIC and the reference. The normalizer question mirrors select-function plus closed-argument: the IBAN normalizer is the only one that applies and the country is readable from the first two characters of the selected span.",
+      "request": {
+        "state": "Remittance details supplied by the vendor.\nAccount name: Peral Trading BV\nIBAN: NL91ABNA0417164300\nBIC: ABNANL2A\nPayment reference: RT-2026-88\nDeterministic finder output: ABNANL2A, NL91ABNA0417164300, RT-2026-88.",
+        "questions": {
+          "iban_span": {
+            "type": "choice",
+            "instructions": "Select the finder span that is the IBAN.",
+            "criteria": {
+              "ABNANL2A": "The bank identifier code",
+              "NL91ABNA0417164300": "The international bank account number",
+              "RT-2026-88": "The payment reference",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "bic_span": {
+            "type": "choice",
+            "instructions": "Select the finder span that is the BIC.",
+            "criteria": {
+              "RT-2026-88": "The payment reference",
+              "NL91ABNA0417164300": "The international bank account number",
+              "ABNANL2A": "The bank identifier code",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "normalizer": {
+            "type": "choice",
+            "instructions": "Which deterministic normalizer should code run on the selected IBAN span?",
+            "criteria": {
+              "date_parse": "Parse the span as a calendar date",
+              "currency_parse": "Parse the span as a money amount",
+              "phone_e164": "Normalize the span as a telephone number",
+              "iban_normalize": "Strip spacing and validate the IBAN check digits",
+              "none_needed": "The span needs no normalization"
+            }
+          },
+          "reference_supplied": {
+            "type": "noul",
+            "instructions": "The remittance details include a payment reference."
+          },
+          "iban_country": {
+            "type": "choice",
+            "instructions": "Which country prefix does the selected IBAN span begin with?",
+            "criteria": {
+              "DE": "Germany",
+              "GB": "United Kingdom",
+              "NL": "Netherlands",
+              "not_determinable": "The span does not begin with a country prefix"
+            }
+          }
+        }
+      },
+      "targets": {
+        "iban_span": {
+          "type": "choice",
+          "expected": "NL91ABNA0417164300"
+        },
+        "bic_span": {
+          "type": "choice",
+          "expected": "ABNANL2A"
+        },
+        "normalizer": {
+          "type": "choice",
+          "expected": "iban_normalize"
+        },
+        "iban_country": {
+          "type": "choice",
+          "expected": "NL"
+        },
+        "reference_supplied": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "customer-direct-number-candidates",
+      "difficulty": "medium",
+      "rationale": "Four phone spans appear: the customer names one as her own best number, one is her switchboard, one belongs to a colleague and one is our own engineer's number in the signature block.",
+      "request": {
+        "state": {
+          "thread_subject": "Re: on-site visit",
+          "customer_message": "From Dana Whitlock: the best number for me is my mobile, 07700 900413. Our reception is 0161 496 0000 but nobody picks up after 4pm. My colleague Ravi is on 07700 900781 if you cannot get hold of me.",
+          "our_signature_block": "Tom Iver, field services, 0161 496 0143",
+          "candidate_spans": [
+            "07700 900413",
+            "0161 496 0000",
+            "07700 900781",
+            "0161 496 0143"
+          ]
+        },
+        "questions": {
+          "customer_direct_number": {
+            "type": "choice",
+            "instructions": "Select the span that is the number Dana asked us to use to reach her.",
+            "criteria": {
+              "07700 900413": "Mobile named by Dana as her best number",
+              "0161 496 0000": "The customer reception line",
+              "07700 900781": "A colleague's mobile",
+              "0161 496 0143": "A number in our own signature block",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "rel_dana_mobile": {
+            "type": "noul",
+            "instructions": "Candidate 07700 900413 is the number Dana asked us to use to reach her directly."
+          },
+          "rel_reception": {
+            "type": "noul",
+            "instructions": "Candidate 0161 496 0000 is the number Dana asked us to use to reach her directly."
+          },
+          "rel_colleague": {
+            "type": "noul",
+            "instructions": "Candidate 07700 900781 is the number Dana asked us to use to reach her directly."
+          },
+          "rel_our_engineer": {
+            "type": "noul",
+            "instructions": "Candidate 0161 496 0143 is the number Dana asked us to use to reach her directly."
+          },
+          "customer_owned_spans": {
+            "type": "score",
+            "instructions": "How many of the four candidate spans are numbers Dana herself gave as ways to reach her personally?",
+            "criteria": [
+              "None of the four",
+              "Exactly one of the four",
+              "Exactly two of the four",
+              "Three or more of the four"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "customer_direct_number": {
+          "type": "choice",
+          "expected": "07700 900413"
+        },
+        "rel_dana_mobile": {
+          "type": "noul",
+          "expected": true
+        },
+        "rel_reception": {
+          "type": "noul",
+          "expected": false
+        },
+        "rel_colleague": {
+          "type": "noul",
+          "expected": false
+        },
+        "rel_our_engineer": {
+          "type": "noul",
+          "expected": false
+        },
+        "customer_owned_spans": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        }
+      },
+      "rankings": [
+        {
+          "name": "direct-number-relevance",
+          "question_ids": [
+            "rel_dana_mobile",
+            "rel_reception",
+            "rel_colleague",
+            "rel_our_engineer"
+          ],
+          "expected_order": [
+            "rel_dana_mobile"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "warranty-clause-span-rerank",
+      "difficulty": "medium",
+      "rationale": "Only the first clause states a warranty length, and it states it verbatim as twenty-four months. [difficulty relabelled hard to medium in audit: every gold is a verbatim read. Ranking prefix shortened to s1 in audit: s2 names a warranty deadline and s3 names a seven-year period, so second place between them is not defensible either way and only the top-1 claim is graded.]",
+      "request": {
+        "state": {
+          "task": "Find the clause that states how long the product warranty lasts",
+          "candidate_clauses": {
+            "s1": "The product is warranted against defects in materials and workmanship for twenty-four months from delivery.",
+            "s2": "Warranty claims must be submitted within thirty days of the buyer discovering the defect.",
+            "s3": "The supplier maintains spare-part availability for seven years after the last shipment.",
+            "s4": "Payment terms are net forty-five days from the invoice date."
+          }
+        },
+        "questions": {
+          "warranty_clause_span": {
+            "type": "choice",
+            "instructions": "Select the candidate clause that states the length of the product warranty.",
+            "criteria": {
+              "s2": "The claim submission deadline clause",
+              "s3": "The spare-part availability clause",
+              "s1": "The defects warranty clause",
+              "s4": "The payment terms clause",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "warranty_length": {
+            "type": "choice",
+            "instructions": "How long is the product warranty according to the candidate clauses?",
+            "criteria": {
+              "twelve_months": "One year",
+              "twenty_four_months": "Two years",
+              "thirty_six_months": "Three years",
+              "seven_years": "Seven years",
+              "not_stated": "No clause states a warranty length"
+            }
+          },
+          "any_clause_states_a_period": {
+            "type": "noul",
+            "instructions": "At least one candidate clause states a length of time."
+          },
+          "rank_s1": {
+            "type": "noul",
+            "instructions": "Candidate s1 states the length of the product warranty."
+          },
+          "rank_s2": {
+            "type": "noul",
+            "instructions": "Candidate s2 states the length of the product warranty."
+          },
+          "rank_s3": {
+            "type": "noul",
+            "instructions": "Candidate s3 states the length of the product warranty."
+          },
+          "rank_s4": {
+            "type": "noul",
+            "instructions": "Candidate s4 states the length of the product warranty."
+          }
+        }
+      },
+      "targets": {
+        "warranty_clause_span": {
+          "type": "choice",
+          "expected": "s1"
+        },
+        "warranty_length": {
+          "type": "choice",
+          "expected": "twenty_four_months"
+        },
+        "any_clause_states_a_period": {
+          "type": "noul",
+          "expected": true
+        },
+        "rank_s1": {
+          "type": "noul",
+          "expected": true
+        },
+        "rank_s2": {
+          "type": "noul",
+          "expected": false
+        },
+        "rank_s3": {
+          "type": "noul",
+          "expected": false
+        },
+        "rank_s4": {
+          "type": "noul",
+          "expected": false
+        }
+      },
+      "rankings": [
+        {
+          "name": "warranty-length-relevance",
+          "question_ids": [
+            "rank_s1",
+            "rank_s2",
+            "rank_s3",
+            "rank_s4"
+          ],
+          "expected_order": [
+            "rank_s1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "meter-reading-current-value",
+      "difficulty": "easy",
+      "rationale": "The bill labels the previous reading, the current reading, the units used and the account number, so each span has one stated role and the bill says who took the current reading.",
+      "request": {
+        "state": {
+          "document": "quarterly electricity bill",
+          "document_text": "Account 6620-118.\nPrevious meter reading 41,205 kWh.\nCurrent meter reading 41,867 kWh, submitted by the customer.\nUnits used this quarter 662 kWh.\nNo estimated reading was used on this bill.",
+          "candidate_spans": [
+            "6620-118",
+            "41,205",
+            "41,867",
+            "662"
+          ]
+        },
+        "questions": {
+          "current_reading_span": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the current meter reading.",
+            "criteria": {
+              "6620-118": "The account number",
+              "41,205": "The previous meter reading",
+              "41,867": "The current meter reading",
+              "662": "The units used this quarter",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "units_used_span": {
+            "type": "choice",
+            "instructions": "Select the candidate span that is the number of units used this quarter.",
+            "criteria": {
+              "662": "The units used this quarter",
+              "41,867": "The current meter reading",
+              "41,205": "The previous meter reading",
+              "6620-118": "The account number",
+              "none": "No supplied span carries the requested value"
+            }
+          },
+          "customer_submitted_reading": {
+            "type": "noul",
+            "instructions": "The bill says the customer submitted the current reading."
+          },
+          "estimated_reading_used": {
+            "type": "noul",
+            "instructions": "The bill was produced from an estimated reading."
+          }
+        }
+      },
+      "targets": {
+        "current_reading_span": {
+          "type": "choice",
+          "expected": "41,867"
+        },
+        "units_used_span": {
+          "type": "choice",
+          "expected": "662"
+        },
+        "customer_submitted_reading": {
+          "type": "noul",
+          "expected": true
+        },
+        "estimated_reading_used": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "iso-appointment-date",
+      "difficulty": "easy",
+      "rationale": "2026-03-09 writes month, day and year explicitly and names no weekday, anchor or week offset.",
+      "request": {
+        "state": "Appointment confirmation: your dental check-up is booked for 2026-03-09 at 09:40 with Dr Aneke. This confirmation was generated automatically and needs no reply.",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the appointment date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the appointment date state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the appointment date fall in?"
+            ],
+            "criteria": {
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the appointment date?"
+            ],
+            "criteria": {
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the appointment date state?"
+            ],
+            "criteria": {
+              "y2025": "The year 2025",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the appointment date name?"
+            ],
+            "criteria": {
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "week_offset": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which week does the appointment date point at?"
+            ],
+            "criteria": {
+              "last_week": "The week before the current one",
+              "this_week": "The current week",
+              "next_week": "The week after the current one",
+              "week_after_next": "Two weeks after the current one",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the appointment date count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "time_of_day_stated": {
+            "type": "noul",
+            "instructions": "The confirmation states a time of day for the appointment."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absolute_full"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "march"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "d1_9"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "u9"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "y2026"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "week_offset": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "time_of_day_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "next-thursday-reschedule",
+      "difficulty": "medium",
+      "rationale": "'Next Thursday' names a weekday and a week offset relative to now. The header date belongs to the message, not to the proposed meeting, so the meeting's month, day and year stay unstated.",
+      "request": {
+        "state": {
+          "message_header": "Sent Wednesday 8 April 2026, 11:02",
+          "body": "Can we push the design review to next Thursday? Same time and same room, I just need one more day with the drawings."
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the proposed meeting date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the proposed meeting date state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the proposed meeting date fall in?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the proposed meeting date?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the proposed meeting date state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2025": "The year 2025",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the proposed meeting date name?"
+            ],
+            "criteria": {
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "week_offset": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which week does the proposed meeting date point at?"
+            ],
+            "criteria": {
+              "last_week": "The week before the current one",
+              "this_week": "The current week",
+              "next_week": "The week after the current one",
+              "week_after_next": "Two weeks after the current one",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the proposed meeting date count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "relative_weekday"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "thursday"
+        },
+        "week_offset": {
+          "type": "choice",
+          "expected": "next_week"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "today"
+        }
+      }
+    },
+    {
+      "name": "two-weeks-from-signing",
+      "difficulty": "hard",
+      "rationale": "The delivery date is an offset of two weeks from the signing date. June is the month the parties expect to sign, not a month stated for the delivery date, so the delivery month stays unstated.",
+      "request": {
+        "state": "Clause 7.2 Delivery. Delivery shall occur two weeks from signing. The parties expect to sign in June and have not agreed a calendar delivery date. Clause 7.3 sets liquidated damages for late delivery.",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the delivery date in clause 7.2."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the delivery date in clause 7.2 count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "signing_date": "The date the parties sign the agreement",
+              "delivery_date": "The date goods are delivered",
+              "invoice_date": "The date an invoice is issued",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "offset_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "In which unit is the offset in the delivery date in clause 7.2 expressed?"
+            ],
+            "criteria": {
+              "days": "Days",
+              "weeks": "Weeks",
+              "months": "Months",
+              "quarters": "Quarters",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "offset_count": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "How many units does the offset in the delivery date in clause 7.2 span?"
+            ],
+            "criteria": {
+              "c1": "An offset of 1",
+              "c2": "An offset of 2",
+              "c3": "An offset of 3",
+              "c4": "An offset of 4",
+              "c6": "An offset of 6",
+              "c12": "An offset of 12",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the delivery date in clause 7.2 state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the delivery date in clause 7.2 state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2025": "The year 2025",
+              "y2026": "The year 2026"
+            }
+          },
+          "signing_month_stated": {
+            "type": "noul",
+            "instructions": "The state names the month in which the parties expect to sign."
+          },
+          "calendar_delivery_date_agreed": {
+            "type": "noul",
+            "instructions": "The parties have agreed a calendar delivery date."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "relative_offset"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "signing_date"
+        },
+        "offset_unit": {
+          "type": "choice",
+          "expected": "weeks"
+        },
+        "offset_count": {
+          "type": "choice",
+          "expected": "c2"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "signing_month_stated": {
+          "type": "noul",
+          "expected": true
+        },
+        "calendar_delivery_date_agreed": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "ambiguous-numeric-date-no-locale",
+      "difficulty": "hard",
+      "contested": true,
+      "rationale": "03/04/2026 can be 3 April or 4 March and the record states that no locale or format convention is recorded anywhere, so the gold is the review mode with month and day unstated. The year is unambiguous. [contested in audit: day_tens is labelled not_stated under the conservative reading that the expression never says which number is the day, but whichever of 03 and 04 is the day it falls in the 1 to 9 band, so d1_9 is equally defensible as an entailed answer. Grade this case separately and do not read a d1_9 answer as a failure.]",
+      "request": {
+        "state": {
+          "form": "claim_intake",
+          "field": "date_of_loss",
+          "raw_value": "03/04/2026",
+          "provenance": "Typed by the claimant into a free-text web field. No country, locale or date-format convention is recorded anywhere in this record, and the claimant cannot be contacted."
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the date of loss."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the date of loss state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the date of loss fall in?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the date of loss?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the date of loss state?"
+            ],
+            "criteria": {
+              "y2025": "The year 2025",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "convention_recoverable": {
+            "type": "noul",
+            "instructions": "The record supplies enough information to decide whether 03 is the day or the month."
+          },
+          "review_urgency": {
+            "type": "score",
+            "instructions": "How much human review does this value need before code may use it as a date?",
+            "criteria": [
+              "None, the value reads unambiguously",
+              "Only if the value drives a deadline",
+              "Review is required before any use of the value"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "ambiguous_review"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "y2026"
+        },
+        "convention_recoverable": {
+          "type": "noul",
+          "expected": false
+        },
+        "review_urgency": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ambiguous-numeric-date-locale-fixed",
+      "difficulty": "medium",
+      "rationale": "The same string 03/04/2026 is now readable because the ledger states that every date in it is written day/month/year, which makes the value 3 April 2026.",
+      "request": {
+        "state": {
+          "ledger": "UK subsidiary purchase ledger. Every date in this ledger is written day/month/year as required by the local finance policy, and the import job rejects rows written any other way.",
+          "field": "invoice_date",
+          "raw_value": "03/04/2026"
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the invoice date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the invoice date state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the invoice date fall in?"
+            ],
+            "criteria": {
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the invoice date?"
+            ],
+            "criteria": {
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the invoice date state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2025": "The year 2025",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027"
+            }
+          },
+          "convention_stated": {
+            "type": "noul",
+            "instructions": "The state says which of the two leading numbers is the day."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absolute_full"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "april"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "d1_9"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "u3"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "y2026"
+        },
+        "convention_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "end-of-last-quarter-restatement",
+      "difficulty": "hard",
+      "rationale": "'The end of last quarter' is an anchored relative expression. The memo date of 14 August 2026 is the memo's own date, not a component of the target expression, so month, day and year stay unstated.",
+      "request": {
+        "state": "Reporting note to the group controller. Please restate the inventory figure as of the end of last quarter so the audit pack matches the filed accounts. The memo itself is dated 14 August 2026 and the restated figure is due before the board meeting.",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the as-of date for the restated figure."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the as-of date for the restated figure count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "memo_date": "The date the memo was written",
+              "end_of_last_quarter": "The last day of the previous quarter",
+              "board_meeting": "The date of the board meeting",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the as-of date for the restated figure state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the as-of date for the restated figure fall in?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the as-of date for the restated figure state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2025": "The year 2025",
+              "y2026": "The year 2026"
+            }
+          },
+          "target_is_memo_date": {
+            "type": "noul",
+            "instructions": "The as-of date for the restated figure is the date the memo was written."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "relative_offset"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "end_of_last_quarter"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "target_is_memo_date": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "voicemail-with-no-date",
+      "difficulty": "easy",
+      "rationale": "The transcript contains no date expression at all. 'When you can' is not a date, so every component is unstated.",
+      "request": {
+        "state": "Voicemail transcript, building management line: 'Hi, it is Marco from unit 4. The lift is making that grinding noise again, same as before. Please send someone when you can. Thanks.'",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the date of the requested visit."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the date of the requested visit state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the date of the requested visit fall in?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the date of the requested visit state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the date of the requested visit name?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday"
+            }
+          },
+          "week_offset": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which week does the date of the requested visit point at?"
+            ],
+            "criteria": {
+              "last_week": "The week before the current one",
+              "this_week": "The current week",
+              "next_week": "The week after the current one",
+              "week_after_next": "Two weeks after the current one",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "date_present": {
+            "type": "noul",
+            "instructions": "The transcript contains a date expression of any kind."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absent"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "week_offset": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "date_present": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "handwritten-note-no-year",
+      "difficulty": "medium",
+      "rationale": "'12 March' gives month and day but the note itself says the year was never written down, so the mode is a partial absolute date and exactly two of the three components are stated.",
+      "request": {
+        "state": "Handwritten note stapled inside the policy file: 'Renewal reminder sent 12 March.' A clerk has added in pencil: 'no year on this note, and the file covers several renewal years, so do not guess.'",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the date the renewal reminder was sent."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the date the renewal reminder was sent state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the date the renewal reminder was sent fall in?"
+            ],
+            "criteria": {
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the date the renewal reminder was sent?"
+            ],
+            "criteria": {
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the date the renewal reminder was sent state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2024": "The year 2024",
+              "y2025": "The year 2025",
+              "y2026": "The year 2026"
+            }
+          },
+          "components_written": {
+            "type": "score",
+            "instructions": "How many of month, day and year are written for the date the renewal reminder was sent?",
+            "criteria": [
+              "None of the three",
+              "Exactly one of the three",
+              "Exactly two of the three",
+              "All three"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absolute_partial"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "march"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "d10_19"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "u2"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "components_written": {
+          "type": "score",
+          "expected_level": 2,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "discharge-summary-follow-up-date",
+      "difficulty": "medium",
+      "rationale": "Four dates appear in a long summary and the follow-up appointment date sits in the middle of it. The printed date, the admission date and the prescription end date are all decoys named with their own roles. [difficulty relabelled hard to medium in audit: the follow-up date is a verbatim labelled lookup and only the distractor density is raised]",
+      "request": {
+        "state": {
+          "document": "discharge_summary",
+          "printed": "Printed by the ward clerk on 2 September 2026.",
+          "body": "Mr T. Halloran, age 61, was admitted on 27 August 2026 with a suspected small bowel obstruction. Imaging on the day of admission showed no obstruction and conservative management was started. Bloods normalised on the second day and oral intake was tolerated from the third. The surgical team reviewed him twice and agreed that no operation is indicated at this time. He is discharged on oral analgesia with a seven-day course of an antispasmodic, which the pharmacy dispensed to run to 8 September 2026. The outpatient follow-up appointment in the general surgery clinic is booked for 21 September 2026 at 14:10 and the patient has the card. He was advised to return sooner if pain, vomiting or fever returns. The GP letter was dictated on the ward and will be posted separately. No community nursing input is required."
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the outpatient follow-up appointment date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the outpatient follow-up appointment date state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the outpatient follow-up appointment date fall in?"
+            ],
+            "criteria": {
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the outpatient follow-up appointment date?"
+            ],
+            "criteria": {
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the outpatient follow-up appointment date state?"
+            ],
+            "criteria": {
+              "y2025": "The year 2025",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "follow_up_is_print_date": {
+            "type": "noul",
+            "instructions": "The outpatient follow-up appointment date is the same date the summary was printed."
+          },
+          "operation_planned": {
+            "type": "noul",
+            "instructions": "An operation is planned for this patient."
+          },
+          "patient_holds_card": {
+            "type": "noul",
+            "instructions": "The patient has been given the appointment card."
+          },
+          "components_written": {
+            "type": "score",
+            "instructions": "How many of month, day and year are written for the outpatient follow-up appointment date?",
+            "criteria": [
+              "None of the three",
+              "Exactly one of the three",
+              "Exactly two of the three",
+              "All three"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absolute_full"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "september"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "d20_29"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "u1"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "y2026"
+        },
+        "follow_up_is_print_date": {
+          "type": "noul",
+          "expected": false
+        },
+        "operation_planned": {
+          "type": "noul",
+          "expected": false
+        },
+        "patient_holds_card": {
+          "type": "noul",
+          "expected": true
+        },
+        "components_written": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "weekday-named-with-full-date",
+      "difficulty": "medium",
+      "rationale": "A named weekday attached to a fully written calendar date does not make the expression relative. The posting date is a decoy of the same format.",
+      "request": {
+        "state": "Site notice, Beaumont Court.\nThe water shut-off is scheduled for Friday 14 May 2027 between 08:00 and 14:00 while the riser valve is replaced.\nThis notice was posted on Sunday 2 May 2027 in the lobby and by the bin store.",
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the water shut-off date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the water shut-off date state?"
+            ],
+            "criteria": {
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_tens": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which ten-day band does the day of the month in the water shut-off date fall in?"
+            ],
+            "criteria": {
+              "d1_9": "The day of the month is 1 to 9",
+              "d10_19": "The day of the month is 10 to 19",
+              "d20_29": "The day of the month is 20 to 29",
+              "d30_31": "The day of the month is 30 or 31",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "day_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "What is the final digit of the day of the month in the water shut-off date?"
+            ],
+            "criteria": {
+              "u0": "The final digit of the day of the month is 0",
+              "u1": "The final digit of the day of the month is 1",
+              "u2": "The final digit of the day of the month is 2",
+              "u3": "The final digit of the day of the month is 3",
+              "u4": "The final digit of the day of the month is 4",
+              "u5": "The final digit of the day of the month is 5",
+              "u6": "The final digit of the day of the month is 6",
+              "u7": "The final digit of the day of the month is 7",
+              "u8": "The final digit of the day of the month is 8",
+              "u9": "The final digit of the day of the month is 9",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the water shut-off date state?"
+            ],
+            "criteria": {
+              "y2026": "The year 2026",
+              "y2027": "The year 2027",
+              "y2028": "The year 2028",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the water shut-off date name?"
+            ],
+            "criteria": {
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "week_offset": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which week does the water shut-off date point at?"
+            ],
+            "criteria": {
+              "last_week": "The week before the current one",
+              "this_week": "The current week",
+              "next_week": "The week after the current one",
+              "week_after_next": "Two weeks after the current one",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the water shut-off date count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "notice_posting_date": "The date the notice was posted",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "time_window_stated": {
+            "type": "noul",
+            "instructions": "The notice states the hours during which the water will be off."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "absolute_full"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "may"
+        },
+        "day_tens": {
+          "type": "choice",
+          "expected": "d10_19"
+        },
+        "day_unit": {
+          "type": "choice",
+          "expected": "u4"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "y2027"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "friday"
+        },
+        "week_offset": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "time_window_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "not-this-friday-the-one-after",
+      "difficulty": "hard",
+      "contested": true,
+      "rationale": "The sender rejects this Friday and names the following one, so the week offset is two weeks out rather than this or next week as written. The second sentence confirms the current week is excluded. [contested in audit: the gold week_after_next only follows if 'this Friday' already sits in the week after the current one, which the state never fixes. Read plainly, 'this Friday' is the current week's Friday and 'the Friday after that one' is next_week. The option descriptions count weeks from the current week and the state supplies no reference date, so both labels are defensible and the case is graded separately.]",
+      "request": {
+        "state": {
+          "thread": "handover cover",
+          "message": "Not this Friday, the Friday after that one. I am away for the whole of this coming week and I do not want to hand over from an airport."
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the date the sender proposes."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the date the sender proposes name?"
+            ],
+            "criteria": {
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday",
+              "not_stated": "The target expression does not state this component"
+            }
+          },
+          "week_offset": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which week does the date the sender proposes point at?"
+            ],
+            "criteria": {
+              "last_week": "The week before the current one",
+              "this_week": "The current week",
+              "next_week": "The week after the current one",
+              "week_after_next": "Two weeks after the current one",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the date the sender proposes count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the date the sender proposes state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the date the sender proposes state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027"
+            }
+          },
+          "available_this_week": {
+            "type": "noul",
+            "instructions": "The sender is available during this coming week."
+          },
+          "rejects_nearest_occurrence": {
+            "type": "noul",
+            "instructions": "The sender rules out the nearest occurrence of the weekday they name."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "relative_weekday"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "friday"
+        },
+        "week_offset": {
+          "type": "choice",
+          "expected": "week_after_next"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "today"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "available_this_week": {
+          "type": "noul",
+          "expected": false
+        },
+        "rejects_nearest_occurrence": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "tomorrow-morning-callback",
+      "difficulty": "medium",
+      "contested": true,
+      "rationale": "'Tomorrow' is a one-day offset from now, so the mode is a relative offset with a day unit. No weekday, month or year is written, and the part of the day is stated without any calendar component. [contested in audit: the anchor gold is today, following the convention that a bare relative expression counts from now, but the caller said 'tomorrow' on the day the call note was written, and the offered call_note_date option names that anchor more precisely. Both labels are defensible, so the case is graded separately.]",
+      "request": {
+        "state": {
+          "channel": "inbound call note",
+          "note": "Caller asked us to ring her back tomorrow morning, any time before 11. She did not give a date and said any day later than that is no use to her."
+        },
+        "questions": {
+          "mode": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Classify how the state writes the callback date."
+            ],
+            "criteria": {
+              "absolute_full": "A specific calendar date with month, day and year all written",
+              "absolute_partial": "A specific calendar date missing the month, the day or the year",
+              "relative_offset": "Anchored to a named event or period boundary, with or without a numeric offset in days, weeks, months or quarters",
+              "relative_weekday": "A named weekday together with a week offset such as this or next",
+              "ambiguous_review": "Written in a form that cannot be read without information the state does not supply",
+              "absent": "No date expression for this target is present at all"
+            }
+          },
+          "anchor": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which anchor does the callback date count from?"
+            ],
+            "criteria": {
+              "today": "The date the state is being read",
+              "call_note_date": "The date the call note was written",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "offset_unit": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "In which unit is the offset in the callback date expressed?"
+            ],
+            "criteria": {
+              "days": "Days",
+              "weeks": "Weeks",
+              "months": "Months",
+              "quarters": "Quarters",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "offset_count": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "How many units does the offset in the callback date span?"
+            ],
+            "criteria": {
+              "c1": "An offset of 1",
+              "c2": "An offset of 2",
+              "c3": "An offset of 3",
+              "c4": "An offset of 4",
+              "c6": "An offset of 6",
+              "c12": "An offset of 12",
+              "not_applicable": "This component does not apply to the target expression"
+            }
+          },
+          "weekday": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which weekday does the callback date name?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "monday": "The named weekday is Monday",
+              "tuesday": "The named weekday is Tuesday",
+              "wednesday": "The named weekday is Wednesday",
+              "thursday": "The named weekday is Thursday",
+              "friday": "The named weekday is Friday",
+              "saturday": "The named weekday is Saturday",
+              "sunday": "The named weekday is Sunday"
+            }
+          },
+          "month": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which month does the callback date state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "january": "Month 01",
+              "february": "Month 02",
+              "march": "Month 03",
+              "april": "Month 04",
+              "may": "Month 05",
+              "june": "Month 06",
+              "july": "Month 07",
+              "august": "Month 08",
+              "september": "Month 09",
+              "october": "Month 10",
+              "november": "Month 11",
+              "december": "Month 12"
+            }
+          },
+          "year": {
+            "type": "choice",
+            "instructions": [
+              "Report this component exactly as the target expression writes it. Do not resolve a relative expression into a calendar date, and do not infer a component the target expression leaves unstated.",
+              "Which year does the callback date state?"
+            ],
+            "criteria": {
+              "not_stated": "The target expression does not state this component",
+              "y2026": "The year 2026",
+              "y2027": "The year 2027"
+            }
+          },
+          "weekday_named": {
+            "type": "noul",
+            "instructions": "The caller named a weekday for the callback."
+          },
+          "part_of_day_named": {
+            "type": "noul",
+            "instructions": "The caller restricted the callback to a part of the day."
+          }
+        }
+      },
+      "targets": {
+        "mode": {
+          "type": "choice",
+          "expected": "relative_offset"
+        },
+        "anchor": {
+          "type": "choice",
+          "expected": "today"
+        },
+        "offset_unit": {
+          "type": "choice",
+          "expected": "days"
+        },
+        "offset_count": {
+          "type": "choice",
+          "expected": "c1"
+        },
+        "weekday": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "month": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "year": {
+          "type": "choice",
+          "expected": "not_stated"
+        },
+        "weekday_named": {
+          "type": "noul",
+          "expected": false
+        },
+        "part_of_day_named": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "hyphenated-linebreak-joins",
+      "difficulty": "medium",
+      "rationale": "A word split by a hyphen at the line end joins, a line starting lower case mid-sentence joins, and a full stop followed by a short title-cased line that is not a sentence does not join.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "lines": {
+            "1": "The regulator published the revised guid-",
+            "2": "ance on emissions monitoring in April. Operators",
+            "3": "must file the first return within ninety days",
+            "4": "of the effective date.",
+            "5": "Compliance checklist",
+            "6": "Confirm the site identifier is registered."
+          }
+        },
+        "questions": {
+          "join_1_2": {
+            "type": "noul",
+            "instructions": [
+              "First line: The regulator published the revised guid-",
+              "Second line: ance on emissions monitoring in April. Operators",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_2_3": {
+            "type": "noul",
+            "instructions": [
+              "First line: ance on emissions monitoring in April. Operators",
+              "Second line: must file the first return within ninety days",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_3_4": {
+            "type": "noul",
+            "instructions": [
+              "First line: must file the first return within ninety days",
+              "Second line: of the effective date.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_4_5": {
+            "type": "noul",
+            "instructions": [
+              "First line: of the effective date.",
+              "Second line: Compliance checklist",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_5_6": {
+            "type": "noul",
+            "instructions": [
+              "First line: Compliance checklist",
+              "Second line: Confirm the site identifier is registered.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          }
+        }
+      },
+      "targets": {
+        "join_1_2": {
+          "type": "noul",
+          "expected": true
+        },
+        "join_2_3": {
+          "type": "noul",
+          "expected": true
+        },
+        "join_3_4": {
+          "type": "noul",
+          "expected": true
+        },
+        "join_4_5": {
+          "type": "noul",
+          "expected": false
+        },
+        "join_5_6": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "bulleted-list-item-wrapping",
+      "difficulty": "easy",
+      "rationale": "A wrapped bullet continues on an indented line with no marker, while every line that starts with a dash begins a new list item.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "lines": {
+            "1": "- Replace the intake filter and record the",
+            "2": "  serial number in the maintenance log.",
+            "3": "- Check the seal for hairline cracks.",
+            "4": "- Torque the cover bolts to 18 Nm."
+          }
+        },
+        "questions": {
+          "join_1_2": {
+            "type": "noul",
+            "instructions": [
+              "First line: - Replace the intake filter and record the",
+              "Second line:   serial number in the maintenance log.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_2_3": {
+            "type": "noul",
+            "instructions": [
+              "First line:   serial number in the maintenance log.",
+              "Second line: - Check the seal for hairline cracks.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_3_4": {
+            "type": "noul",
+            "instructions": [
+              "First line: - Check the seal for hairline cracks.",
+              "Second line: - Torque the cover bolts to 18 Nm.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "dash_starts_item": {
+            "type": "noul",
+            "instructions": "In this block every line that begins with a dash starts a new list item."
+          },
+          "block_type": {
+            "type": "choice",
+            "instructions": "Classify the block formed by lines 1 to 4 once the wrapped item is joined.",
+            "criteria": {
+              "paragraph": "Running prose",
+              "heading": "A section or document title",
+              "unordered_list": "A bulleted list",
+              "ordered_list": "A numbered list",
+              "code": "A literal command, terminal transcript or source listing",
+              "table_row": "A row of a table with delimited cells",
+              "blockquote": "Quoted material attributed to someone else",
+              "callout": "An aside marked with a label such as Note, Tip or Warning"
+            }
+          }
+        }
+      },
+      "targets": {
+        "join_1_2": {
+          "type": "noul",
+          "expected": true
+        },
+        "join_2_3": {
+          "type": "noul",
+          "expected": false
+        },
+        "join_3_4": {
+          "type": "noul",
+          "expected": false
+        },
+        "block_type": {
+          "type": "choice",
+          "expected": "unordered_list"
+        },
+        "dash_starts_item": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "heading-followed-by-sentence",
+      "difficulty": "easy",
+      "rationale": "A short title-cased line with no final punctuation is a heading and never joins to the sentence beneath it, while the sentence itself wraps.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "lines": {
+            "1": "Escalation policy",
+            "2": "Escalate any unplanned outage lasting more than",
+            "3": "thirty minutes to the duty manager."
+          }
+        },
+        "questions": {
+          "join_1_2": {
+            "type": "noul",
+            "instructions": [
+              "First line: Escalation policy",
+              "Second line: Escalate any unplanned outage lasting more than",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "join_2_3": {
+            "type": "noul",
+            "instructions": [
+              "First line: Escalate any unplanned outage lasting more than",
+              "Second line: thirty minutes to the duty manager.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          },
+          "line_1_type": {
+            "type": "choice",
+            "instructions": "Classify line 1 on its own.",
+            "criteria": {
+              "code": "A literal command, terminal transcript or source listing",
+              "paragraph": "Running prose",
+              "heading": "A section or document title",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "table_row": "A row of a table with delimited cells",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          }
+        }
+      },
+      "targets": {
+        "join_1_2": {
+          "type": "noul",
+          "expected": false
+        },
+        "join_2_3": {
+          "type": "noul",
+          "expected": true
+        },
+        "line_1_type": {
+          "type": "choice",
+          "expected": "heading"
+        }
+      }
+    },
+    {
+      "name": "table-row-with-companions",
+      "difficulty": "medium",
+      "rationale": "Pipe-delimited cells make the block a table row with three columns. The heading, steps and callout companions are all irrelevant to that type, so their golds are the explicit not_applicable and false values.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "block_text": "| Region | Latency p95 | Error rate |",
+          "neighbours": {
+            "above": "Service level report for the quarter",
+            "below": "| eu-west | 184 ms | 0.4% |"
+          }
+        },
+        "questions": {
+          "block_type": {
+            "type": "choice",
+            "instructions": "Classify the block_text.",
+            "criteria": {
+              "heading": "A section or document title",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "code": "A literal command, terminal transcript or source listing",
+              "table_row": "A row of a table with delimited cells",
+              "paragraph": "Running prose",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          },
+          "heading_level": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a heading, which level is it?",
+              "Answer not_applicable when the block is not a heading."
+            ],
+            "criteria": {
+              "h1": "Level one, the document title",
+              "h2": "Level two, a top-level section",
+              "h3": "Level three, a subsection",
+              "h4": "Level four, a sub-subsection",
+              "not_applicable": "The block is not a heading"
+            }
+          },
+          "ordered_steps": {
+            "type": "noul",
+            "instructions": "The block_text is a sequence of numbered steps the reader is meant to perform in order."
+          },
+          "callout_kind": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a callout, which kind is it?",
+              "Answer not_applicable when the block is not a callout."
+            ],
+            "criteria": {
+              "note": "Neutral additional information",
+              "tip": "Advice that makes a task easier",
+              "warning": "A caution about a risk of damage or loss",
+              "danger": "A caution about a risk to life",
+              "not_applicable": "The block is not a callout"
+            }
+          },
+          "below_is_same_table": {
+            "type": "noul",
+            "instructions": "The neighbouring line below the block is another row of the same table."
+          },
+          "column_count": {
+            "type": "score",
+            "instructions": "How many delimited cells does the block_text contain?",
+            "criteria": [
+              "The block is not tabular",
+              "One cell",
+              "Two cells",
+              "Three cells",
+              "Four or more cells"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "block_type": {
+          "type": "choice",
+          "expected": "table_row"
+        },
+        "heading_level": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "ordered_steps": {
+          "type": "noul",
+          "expected": false
+        },
+        "callout_kind": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "column_count": {
+          "type": "score",
+          "expected_level": 3,
+          "tolerance": 0
+        },
+        "below_is_same_table": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "numbered-subsection-heading-level",
+      "difficulty": "hard",
+      "rationale": "The outline rule and the block number must be combined: the title is the only level one, numbered sections such as 3. are level two, so 3.2 is level three. A numbered heading is not a numbered step list.",
+      "request": {
+        "state": {
+          "document_outline_rule": "The document title 'Release runbook' is the only level-one heading. Top-level numbered sections such as '3. Deployment' are level two, and each further dotted number adds one level.",
+          "block_text": "3.2 Rollback",
+          "neighbours": {
+            "above": "3. Deployment",
+            "below": "Restore the previous image tag and restart the service."
+          }
+        },
+        "questions": {
+          "block_type": {
+            "type": "choice",
+            "instructions": "Classify the block_text.",
+            "criteria": {
+              "paragraph": "Running prose",
+              "ordered_list": "A numbered list",
+              "heading": "A section or document title",
+              "code": "A literal command, terminal transcript or source listing",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "blockquote": "Quoted material attributed to someone else",
+              "table_row": "A row of a table with delimited cells",
+              "unordered_list": "A bulleted list"
+            }
+          },
+          "heading_level": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a heading, which level is it?",
+              "Answer not_applicable when the block is not a heading."
+            ],
+            "criteria": {
+              "h1": "Level one, the document title",
+              "h2": "Level two, a top-level section",
+              "h3": "Level three, a subsection",
+              "h4": "Level four, a sub-subsection",
+              "not_applicable": "The block is not a heading"
+            }
+          },
+          "ordered_steps": {
+            "type": "noul",
+            "instructions": "The block_text is a sequence of numbered steps the reader is meant to perform in order."
+          },
+          "callout_kind": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a callout, which kind is it?",
+              "Answer not_applicable when the block is not a callout."
+            ],
+            "criteria": {
+              "note": "Neutral additional information",
+              "tip": "Advice that makes a task easier",
+              "warning": "A caution about a risk of damage or loss",
+              "danger": "A caution about a risk to life",
+              "not_applicable": "The block is not a callout"
+            }
+          },
+          "joins_below": {
+            "type": "noul",
+            "instructions": [
+              "First line: 3.2 Rollback",
+              "Second line: Restore the previous image tag and restart the service.",
+              "Decide the join from these two lines alone."
+            ],
+            "criteria": {
+              "true": "The two lines are fragments of one block and must be joined into a single line",
+              "false": "The two lines belong to different blocks and must stay on separate lines"
+            }
+          }
+        }
+      },
+      "targets": {
+        "block_type": {
+          "type": "choice",
+          "expected": "heading"
+        },
+        "heading_level": {
+          "type": "choice",
+          "expected": "h3"
+        },
+        "ordered_steps": {
+          "type": "noul",
+          "expected": false
+        },
+        "callout_kind": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "joins_below": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "callout-kind-against-keyword",
+      "difficulty": "hard",
+      "rationale": "The block is labelled Tip and gives advice that makes a task easier. The words FATAL and fails belong to a quoted log line the block explicitly calls expected and harmless, so the kind is tip and no action is needed.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "block_text": "Tip: if the nightly import seems to stall, the log will print FATAL: lock timeout once and then continue. That line is expected and harmless, so you can keep waiting instead of restarting the job.",
+          "neighbours": {
+            "above": "Running the nightly import",
+            "below": "The import finishes in about forty minutes."
+          }
+        },
+        "questions": {
+          "block_type": {
+            "type": "choice",
+            "instructions": "Classify the block_text.",
+            "criteria": {
+              "table_row": "A row of a table with delimited cells",
+              "paragraph": "Running prose",
+              "blockquote": "Quoted material attributed to someone else",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "heading": "A section or document title",
+              "code": "A literal command, terminal transcript or source listing",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list"
+            }
+          },
+          "callout_kind": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a callout, which kind is it?",
+              "Answer not_applicable when the block is not a callout."
+            ],
+            "criteria": {
+              "note": "Neutral additional information",
+              "tip": "Advice that makes a task easier",
+              "warning": "A caution about a risk of damage or loss",
+              "danger": "A caution about a risk to life",
+              "not_applicable": "The block is not a callout"
+            }
+          },
+          "heading_level": {
+            "type": "choice",
+            "instructions": [
+              "If the block_text is a heading, which level is it?",
+              "Answer not_applicable when the block is not a heading."
+            ],
+            "criteria": {
+              "h1": "Level one, the document title",
+              "h2": "Level two, a top-level section",
+              "h3": "Level three, a subsection",
+              "h4": "Level four, a sub-subsection",
+              "not_applicable": "The block is not a heading"
+            }
+          },
+          "ordered_steps": {
+            "type": "noul",
+            "instructions": "The block_text is a sequence of numbered steps the reader is meant to perform in order."
+          },
+          "action_required": {
+            "type": "noul",
+            "instructions": "The block tells the reader that the condition it describes requires them to act."
+          },
+          "quotes_log_line": {
+            "type": "noul",
+            "instructions": "The block quotes a line that the log prints."
+          }
+        }
+      },
+      "targets": {
+        "block_type": {
+          "type": "choice",
+          "expected": "callout"
+        },
+        "callout_kind": {
+          "type": "choice",
+          "expected": "tip"
+        },
+        "heading_level": {
+          "type": "choice",
+          "expected": "not_applicable"
+        },
+        "ordered_steps": {
+          "type": "noul",
+          "expected": false
+        },
+        "action_required": {
+          "type": "noul",
+          "expected": false
+        },
+        "quotes_log_line": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "terminal-transcript-vs-prose",
+      "difficulty": "easy",
+      "rationale": "Block A is a literal shell prompt line and block B describes the same command in running prose without giving a pasteable command.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "block_a": "$ systemctl --user status ingest-worker.service",
+          "block_b": "Run systemctl with the status subcommand to see whether the unit is active before you touch anything else."
+        },
+        "questions": {
+          "block_a_type": {
+            "type": "choice",
+            "instructions": "Classify block_a.",
+            "criteria": {
+              "paragraph": "Running prose",
+              "heading": "A section or document title",
+              "code": "A literal command, terminal transcript or source listing",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "table_row": "A row of a table with delimited cells",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          },
+          "block_b_type": {
+            "type": "choice",
+            "instructions": "Classify block_b.",
+            "criteria": {
+              "code": "A literal command, terminal transcript or source listing",
+              "heading": "A section or document title",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "paragraph": "Running prose",
+              "table_row": "A row of a table with delimited cells",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          },
+          "transcript_count": {
+            "type": "score",
+            "instructions": "How many of the two blocks are literal terminal transcripts?",
+            "criteria": [
+              "Neither block",
+              "Exactly one block",
+              "Both blocks"
+            ]
+          },
+          "block_b_pasteable": {
+            "type": "noul",
+            "instructions": "Block b contains a complete command that can be pasted into a shell without editing."
+          },
+          "block_a_pasteable": {
+            "type": "noul",
+            "instructions": "Block a contains a complete command that can be pasted into a shell without editing."
+          }
+        }
+      },
+      "targets": {
+        "block_a_type": {
+          "type": "choice",
+          "expected": "code"
+        },
+        "block_b_type": {
+          "type": "choice",
+          "expected": "paragraph"
+        },
+        "transcript_count": {
+          "type": "score",
+          "expected_level": 1,
+          "tolerance": 0
+        },
+        "block_b_pasteable": {
+          "type": "noul",
+          "expected": false
+        },
+        "block_a_pasteable": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "numbered-references-vs-numbered-steps",
+      "difficulty": "hard",
+      "rationale": "Both blocks are numbered lists, so block type alone does not separate them. Block r lists author, title and year entries, which nobody performs in order, while block s lists imperative actions.",
+      "request": {
+        "state": {
+          "note": "Text extracted from a printed page. Blank lines between blocks were lost, so line breaks carry no block information by themselves.",
+          "block_r": "1. Hoyle, R. Sediment transport in tidal channels. 2019.\n2. Abara, T. Grain-size distribution methods. 2021.\n3. Venn, K. and Osei, L. Estuary survey practice. 2023.",
+          "block_s": "1. Close the isolation valve.\n2. Drain the sample line into the waste carboy.\n3. Fit the replacement cartridge and open the valve again."
+        },
+        "questions": {
+          "block_r_type": {
+            "type": "choice",
+            "instructions": "Classify block_r.",
+            "criteria": {
+              "heading": "A section or document title",
+              "paragraph": "Running prose",
+              "ordered_list": "A numbered list",
+              "unordered_list": "A bulleted list",
+              "code": "A literal command, terminal transcript or source listing",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "table_row": "A row of a table with delimited cells",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          },
+          "block_s_type": {
+            "type": "choice",
+            "instructions": "Classify block_s.",
+            "criteria": {
+              "paragraph": "Running prose",
+              "heading": "A section or document title",
+              "unordered_list": "A bulleted list",
+              "code": "A literal command, terminal transcript or source listing",
+              "ordered_list": "A numbered list",
+              "callout": "An aside marked with a label such as Note, Tip or Warning",
+              "table_row": "A row of a table with delimited cells",
+              "blockquote": "Quoted material attributed to someone else"
+            }
+          },
+          "block_r_steps": {
+            "type": "noul",
+            "instructions": "Block r is a sequence of numbered steps the reader is meant to perform in order."
+          },
+          "block_s_steps": {
+            "type": "noul",
+            "instructions": "Block s is a sequence of numbered steps the reader is meant to perform in order."
+          },
+          "both_numbered": {
+            "type": "noul",
+            "instructions": "Both blocks number their items from 1 upwards."
+          },
+          "block_r_kind": {
+            "type": "choice",
+            "instructions": "What kind of numbered list is block_r?",
+            "criteria": {
+              "procedure_steps": "Actions performed in order",
+              "glossary": "Terms with definitions",
+              "changelog": "Dated entries describing changes",
+              "bibliography": "Cited works with authors, titles and years"
+            }
+          }
+        }
+      },
+      "targets": {
+        "block_r_type": {
+          "type": "choice",
+          "expected": "ordered_list"
+        },
+        "block_s_type": {
+          "type": "choice",
+          "expected": "ordered_list"
+        },
+        "block_r_steps": {
+          "type": "noul",
+          "expected": false
+        },
+        "block_s_steps": {
+          "type": "noul",
+          "expected": true
+        },
+        "both_numbered": {
+          "type": "noul",
+          "expected": true
+        },
+        "block_r_kind": {
+          "type": "choice",
+          "expected": "bibliography"
+        }
+      }
+    }
+  ]
+}

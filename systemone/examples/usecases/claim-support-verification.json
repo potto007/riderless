@@ -1,0 +1,1835 @@
+{
+  "suite": "claim-support-verification",
+  "family": "Citation and claim verification (support / contradict / silent)",
+  "source": [
+    "Double-checking citations (citation_check)",
+    "Classifying RAG passages (classifying_rag_passages)",
+    "SDE cascade (sde_cascade)",
+    "Verification beside a generative system (build specification pattern table)"
+  ],
+  "description": "Measures whether the model can place a claim against a source excerpt in one of three relations (supports, contradicts, silent), whether it can separate answer evidence from premise contradiction for a retrieved passage, and whether it can flag a per field extraction error including a wrongly empty field. The discriminating axis is the silent class: a third of the relation cases are claims the excerpt neither states nor denies while sharing its vocabulary, so a model that collapses plausible onto supports loses silent recall. Gold labels never depend on arithmetic, counting, or date differences; every label is settled by reading two adjacent sentences. Scores are deliberately absent because strength of support has no unambiguous gold level. The fabricated quote case from the citation cookbook is also absent: code verifies the quoted string before any model call, so it is not a model question. Report a three class confusion matrix for the relation choices plus noul accuracy at 0.5, not a single number: a supports and contradicts confusion and a supports and silent confusion are different defects.",
+  "cases": [
+    {
+      "name": "refund-window-restated",
+      "difficulty": "easy",
+      "rationale": "The excerpt states the ten business day window for the original payment method and the claim restates it.",
+      "request": {
+        "state": {
+          "source_excerpt": "Standard refunds are issued to the original payment method within ten business days of approval. Store credit is issued immediately.",
+          "claim": "Approved refunds are returned to the original payment method within ten business days."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "supports"
+        }
+      }
+    },
+    {
+      "name": "maintenance-day-mismatch",
+      "difficulty": "easy",
+      "rationale": "The excerpt fixes the window to the first Sunday; the claim says the first Saturday, which cannot both hold.",
+      "request": {
+        "state": {
+          "source_excerpt": "Planned maintenance for the reporting cluster runs from 01:00 to 03:00 UTC on the first Sunday of each month. The transactional database is not affected.",
+          "claim": "Reporting cluster maintenance runs from 01:00 to 03:00 UTC on the first Saturday of each month."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "contradicts"
+        }
+      }
+    },
+    {
+      "name": "clinic-parking-unstated",
+      "difficulty": "easy",
+      "rationale": "The excerpt covers clinic hours and walk-ins only and says nothing about parking either way.",
+      "request": {
+        "state": {
+          "source_excerpt": "The dermatology clinic on the third floor sees patients Monday through Thursday, 08:00 to 16:00. Walk-ins are accepted until 15:00.",
+          "claim": "The dermatology clinic validates patient parking."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "silent"
+        }
+      }
+    },
+    {
+      "name": "shipment-carrier-restated",
+      "difficulty": "easy",
+      "rationale": "The excerpt names the carrier and the claim repeats it with no change.",
+      "request": {
+        "state": {
+          "source_excerpt": "Order 55120 shipped on 8 April with Meridian Freight and was signed for at the loading dock two days later.",
+          "claim": "Order 55120 shipped with Meridian Freight."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "supports"
+        }
+      }
+    },
+    {
+      "name": "seat-count-mismatch",
+      "difficulty": "easy",
+      "rationale": "The excerpt states twenty five seats and the claim states forty.",
+      "request": {
+        "state": {
+          "source_excerpt": "The team plan on this account is provisioned for twenty five seats. Additional seats are billed at the list rate.",
+          "claim": "The account is provisioned for forty seats."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "contradicts"
+        }
+      }
+    },
+    {
+      "name": "warranty-return-process-unstated",
+      "difficulty": "medium",
+      "rationale": "The excerpt lists what a claim requires but never says whether the pump must be returned before a replacement ships; it does list the two items a claim requires.",
+      "request": {
+        "state": {
+          "source_excerpt": "The two year warranty covers manufacturing defects in the pump housing and the motor assembly. A claim requires the original proof of purchase and a photograph of the serial plate.",
+          "claim": "A warranty claim requires the customer to return the pump before a replacement ships."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "requirements_listed": {
+            "type": "noul",
+            "instructions": "Does the excerpt list what a warranty claim requires?",
+            "criteria": {
+              "true": "The excerpt names the items a claim must include.",
+              "false": "The excerpt names no claim requirements."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "requirements_listed": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "europe-revenue-three-claims",
+      "difficulty": "medium",
+      "rationale": "One excerpt carries a restated decline, a changed figure, and an unstated cause, giving one claim of each class.",
+      "request": {
+        "state": {
+          "source_excerpt": "Third quarter revenue in the Europe region was 2.4 million euros, down from 2.9 million euros in the second quarter. The decline was concentrated in the hardware line; service revenue was flat. The board deferred its dividend decision to the January meeting.",
+          "claim_a": "Europe region revenue fell between the second and the third quarter.",
+          "claim_b": "Europe region third quarter revenue was 2.6 million euros.",
+          "claim_c": "The hardware decline in Europe was caused by a supplier shortage."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "relation_c": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_c only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "dividend_outstanding": {
+            "type": "noul",
+            "instructions": "According to the excerpt, is the dividend decision still outstanding?",
+            "criteria": {
+              "true": "The board has not yet decided.",
+              "false": "The board has decided."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "relation_c": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "dividend_outstanding": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "all-regions-quantifier",
+      "difficulty": "hard",
+      "rationale": "The excerpt says Europe service revenue was flat, so the claim that every region grew is denied; the broken part is the quantifier, not a number.",
+      "request": {
+        "state": {
+          "source_excerpt": "Service revenue grew in the Americas and in Asia Pacific during the third quarter. In Europe, service revenue was flat.",
+          "claim": "Service revenue grew in every region during the third quarter."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "failure_mode": {
+            "type": "choice",
+            "instructions": "The claim conflicts with the excerpt. Choose the single part of the claim that carries the conflict.",
+            "criteria": {
+              "wrong_number": "The claim uses a numeric value the excerpt does not give.",
+              "wrong_scope": "The claim widens or narrows the range of things the excerpt covers.",
+              "no_conflict": "Nothing in the claim conflicts with the excerpt.",
+              "wrong_entity": "The claim attaches the fact to the wrong person, party, or item.",
+              "wrong_time": "The claim uses a date, day, or time the excerpt does not give."
+            }
+          },
+          "region_without_growth": {
+            "type": "noul",
+            "instructions": "Does the excerpt name at least one region where service revenue did not grow?",
+            "criteria": {
+              "true": "A named region is reported as flat or down.",
+              "false": "Every named region is reported as growing."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "failure_mode": {
+          "type": "choice",
+          "expected": "wrong_scope"
+        },
+        "region_without_growth": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "recommended-not-approved",
+      "difficulty": "hard",
+      "rationale": "A recommendation to the medical director is not a determination, so the excerpt neither states nor denies approval and the file is still with the director.",
+      "request": {
+        "state": {
+          "source_excerpt": "The utilization review nurse recommended the prior authorization request for approval and forwarded the file to the medical director. A determination letter is mailed within five business days of the director's decision.",
+          "claim": "The prior authorization request was approved."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "decision_pending": {
+            "type": "noul",
+            "instructions": "According to the excerpt, is the request still waiting on the medical director?",
+            "criteria": {
+              "true": "The file has been forwarded and no decision is recorded.",
+              "false": "A decision has already been made."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "decision_pending": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "appeal-entity-swap",
+      "difficulty": "hard",
+      "rationale": "The withdrawn appeal is the imaging appeal and the pharmacy appeal is stated to be still open, so claim_a attaches the withdrawal to the wrong appeal while claim_b restates it correctly.",
+      "request": {
+        "state": {
+          "source_excerpt": "Two appeals were filed for Mr. Alvarez: a pharmacy denial appeal received on 3 March and an imaging denial appeal received on 9 March. The imaging appeal was withdrawn by the requesting clinic on 12 March. The pharmacy appeal is still open.",
+          "claim_a": "Mr. Alvarez's pharmacy appeal was withdrawn on 12 March.",
+          "claim_b": "The requesting clinic withdrew Mr. Alvarez's imaging denial appeal."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "failure_mode": {
+            "type": "choice",
+            "instructions": "Claim_a conflicts with the excerpt. Choose the single part of claim_a that carries the conflict.",
+            "criteria": {
+              "no_conflict": "Nothing in the claim conflicts with the excerpt.",
+              "wrong_time": "The claim uses a date, day, or time the excerpt does not give.",
+              "wrong_entity": "The claim attaches the fact to the wrong person, party, or item.",
+              "wrong_number": "The claim uses a numeric value the excerpt does not give.",
+              "wrong_scope": "The claim widens or narrows the range of things the excerpt covers."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "failure_mode": {
+          "type": "choice",
+          "expected": "wrong_entity"
+        }
+      }
+    },
+    {
+      "name": "bracket-load-in-range",
+      "difficulty": "medium",
+      "rationale": "The excerpt gives a rated range from 400 to 650 kilograms and the claimed load sits inside it.",
+      "request": {
+        "state": {
+          "source_excerpt": "The bracket is rated for continuous loads between 400 and 650 kilograms. Shock loading above the rated range voids the certification.",
+          "claim": "A continuous load of 500 kilograms is inside the bracket's rated range."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "supports"
+        }
+      }
+    },
+    {
+      "name": "torque-value-mismatch",
+      "difficulty": "medium",
+      "rationale": "The excerpt gives 95 newton meters for the head bolts and the claim gives 105, a numeric conflict.",
+      "request": {
+        "state": {
+          "source_excerpt": "The torque specification for the head bolts is 95 newton meters, applied in three stages. Reusing stretch bolts is not permitted.",
+          "claim": "The head bolts are torqued to 105 newton meters."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          },
+          "failure_mode": {
+            "type": "choice",
+            "instructions": "The claim conflicts with the excerpt. Choose the single part of the claim that carries the conflict.",
+            "criteria": {
+              "wrong_entity": "The claim attaches the fact to the wrong person, party, or item.",
+              "wrong_time": "The claim uses a date, day, or time the excerpt does not give.",
+              "no_conflict": "Nothing in the claim conflicts with the excerpt.",
+              "wrong_number": "The claim uses a numeric value the excerpt does not give.",
+              "wrong_scope": "The claim widens or narrows the range of things the excerpt covers."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "failure_mode": {
+          "type": "choice",
+          "expected": "wrong_number"
+        }
+      }
+    },
+    {
+      "name": "oil-pan-spec-elsewhere",
+      "difficulty": "hard",
+      "rationale": "The excerpt gives the head bolt value but says the oil pan bolts use a separate specification it does not reproduce, so the same number cannot be carried across.",
+      "request": {
+        "state": {
+          "source_excerpt": "The torque specification for the head bolts is 95 newton meters. The oil pan bolts use a separate specification listed in table 4.",
+          "claim_a": "The oil pan bolts are torqued to 95 newton meters.",
+          "claim_b": "The head bolts are torqued to 95 newton meters."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "value_elsewhere": {
+            "type": "noul",
+            "instructions": "Does the excerpt point to another table for the oil pan bolt torque value?",
+            "criteria": {
+              "true": "The excerpt defers that value to another table.",
+              "false": "The excerpt gives the oil pan bolt value itself."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "value_elsewhere": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "gift-card-double-negation",
+      "difficulty": "medium",
+      "rationale": "The excerpt says gift cards cannot be combined with promotional codes, which is claim_a reworded from the customer's side; expiry is never mentioned.",
+      "request": {
+        "state": {
+          "source_excerpt": "Gift cards cannot be used to pay for shipping upgrades, and they cannot be combined with promotional codes.",
+          "claim_a": "A customer cannot apply a promotional code to an order paid with a gift card.",
+          "claim_b": "Gift cards expire twelve months after purchase."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "silent"
+        }
+      }
+    },
+    {
+      "name": "change-record-long",
+      "difficulty": "hard",
+      "rationale": "The rollback operator sits in the middle of a long record, the clock skew cause is never given, and the record states no invoices were delayed.",
+      "request": {
+        "state": {
+          "source_excerpt": "Change record CR-4482 covers the migration of the billing scheduler from the legacy cron host to the managed job runner. The change window opened at 22:00 on 4 May and the scheduler was drained of queued jobs before any configuration was touched. Priya Raghavan performed the cutover and Tomas Lind observed from the incident channel. Fifteen minutes after cutover the managed runner began reporting duplicate job identifiers, so Priya executed the documented rollback to the legacy cron host and confirmed that the queue drained normally. Tomas opened follow up ticket OPS-1190 to investigate the duplicate identifiers before a second attempt. The postmortem meeting was scheduled for 7 May. No customer invoices were delayed, because the billing run for that evening had already completed before the change window opened. The record notes that the managed job runner remains provisioned and idle and that its credentials were rotated after the rollback.",
+          "claim_a": "Priya Raghavan carried out the rollback of the billing scheduler change.",
+          "claim_b": "The duplicate job identifiers were caused by clock skew between the two hosts.",
+          "claim_c": "Customer invoices were delayed by change CR-4482."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "relation_c": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_c only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "runner_still_provisioned": {
+            "type": "noul",
+            "instructions": "Does the record say the managed job runner was left provisioned after the rollback?",
+            "criteria": {
+              "true": "The runner remains provisioned and idle.",
+              "false": "The runner was decommissioned or the record does not say."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "relation_c": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "runner_still_provisioned": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "daypack-restock-unstated",
+      "difficulty": "medium",
+      "rationale": "The excerpt gives current availability for two colours and says nothing about a future restock.",
+      "request": {
+        "state": {
+          "source_excerpt": "The Ridgeline daypack in slate is out of stock online. The same pack in moss is available and ships in two business days.",
+          "claim": "The slate Ridgeline daypack will be restocked next month."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "silent"
+        }
+      }
+    },
+    {
+      "name": "review-room-and-timezone",
+      "difficulty": "medium",
+      "rationale": "The excerpt says the review moved out of room B2, gives a clock time without naming any time zone, and states the date outright.",
+      "request": {
+        "state": {
+          "source_excerpt": "The quarterly review moved from room B2 to the auditorium. The time is unchanged at 14:00 on 12 June. Remote attendees should use the same dial in as last quarter.",
+          "claim_a": "The quarterly review will be held in room B2.",
+          "claim_b": "The 14:00 start time for the quarterly review is stated in Central European Time.",
+          "claim_c": "The quarterly review takes place on 12 June."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "relation_c": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_c only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "relation_c": {
+          "type": "choice",
+          "expected": "supports"
+        }
+      }
+    },
+    {
+      "name": "license-scope-two-claims",
+      "difficulty": "medium",
+      "rationale": "Public posting is distribution outside the organization, which the excerpt forbids without consent; destruction at termination is absent; internal training reproduction is granted in the first sentence.",
+      "request": {
+        "state": {
+          "source_excerpt": "Licensee may reproduce the Materials for internal training. Licensee may not distribute the Materials outside its organization without prior written consent from Licensor.",
+          "claim_a": "Licensee may post the Materials on its public website without asking Licensor.",
+          "claim_b": "Licensee must destroy every copy of the Materials when the agreement ends.",
+          "claim_c": "Licensee may copy the Materials to train its own employees."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it."
+            }
+          },
+          "relation_c": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_c only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "relation_c": {
+          "type": "choice",
+          "expected": "supports"
+        }
+      }
+    },
+    {
+      "name": "deposit-refundable-qualifier",
+      "difficulty": "hard",
+      "rationale": "The excerpt says cancellations inside fourteen days forfeit the deposit, so a refund in every cancellation case is denied outright.",
+      "request": {
+        "state": {
+          "source_excerpt": "The venue deposit is refundable only if the booking is cancelled at least fourteen days before the event date. Cancellations inside that period forfeit the deposit.",
+          "claim": "The venue deposit is refundable no matter when the booking is cancelled."
+        },
+        "questions": {
+          "relation": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent.",
+            "criteria": {
+              "silent": "The excerpt neither states the claim nor denies it.",
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim."
+            }
+          },
+          "conditional": {
+            "type": "noul",
+            "instructions": "Does the excerpt make the deposit refund depend on when the booking is cancelled?",
+            "criteria": {
+              "true": "The refund depends on a stated cancellation condition.",
+              "false": "The refund applies in every cancellation case."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation": {
+          "type": "choice",
+          "expected": "contradicts"
+        },
+        "conditional": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "pilot-rollout-plausible-silent",
+      "difficulty": "hard",
+      "rationale": "The excerpt names eleven pilot accounts and the February start date but says nothing about any later release plan, so the March rollout claim is neither stated nor denied.",
+      "request": {
+        "state": {
+          "source_excerpt": "The saved views feature was enabled for eleven pilot accounts on 2 February. The pilot group was chosen from customers who had already asked for shared filters. Feedback is collected in the shared channel.",
+          "claim_a": "Saved views will be opened to every customer in March.",
+          "claim_b": "Saved views were switched on for a group of pilot accounts in February."
+        },
+        "questions": {
+          "relation_a": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_a only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "relation_b": {
+            "type": "choice",
+            "instructions": "Classify how the source excerpt relates to the claim. Judge only from the excerpt. Information that is plausible but not stated is silent. Judge claim_b only.",
+            "criteria": {
+              "supports": "The excerpt states the claim or directly entails it.",
+              "contradicts": "The excerpt states something that cannot be true at the same time as the claim.",
+              "silent": "The excerpt neither states the claim nor denies it."
+            }
+          },
+          "pilot_only": {
+            "type": "noul",
+            "instructions": "Does the excerpt limit the feature to a pilot group?",
+            "criteria": {
+              "true": "Only named pilot accounts had it enabled.",
+              "false": "The excerpt describes a general release."
+            }
+          }
+        }
+      },
+      "targets": {
+        "relation_a": {
+          "type": "choice",
+          "expected": "silent"
+        },
+        "relation_b": {
+          "type": "choice",
+          "expected": "supports"
+        },
+        "pilot_only": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "rag-export-retention-direct",
+      "difficulty": "easy",
+      "rationale": "The passage gives the retention window the question asks for and assumes nothing false.",
+      "request": {
+        "state": {
+          "question": "How long does an exported report stay downloadable?",
+          "passage": "Exported reports remain downloadable for seven days. After that the file is deleted and the export must be run again."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": true
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rag-storage-cap-false-premise",
+      "difficulty": "hard",
+      "rationale": "The question assumes the cap was removed in March; the passage denies that and still gives no reason for a removal.",
+      "request": {
+        "state": {
+          "question": "Why was the free tier's ten gigabyte storage cap removed in March?",
+          "passage": "The free tier storage cap has been ten gigabytes since launch and was not changed in March. The March release changed only the monthly export limit."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          },
+          "export_limit_changed": {
+            "type": "noul",
+            "instructions": "Does the passage say the March release changed the export limit?",
+            "criteria": {
+              "true": "The passage names the export limit as the March change.",
+              "false": "The passage names no March change to the export limit."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": false
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": true
+        },
+        "export_limit_changed": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "rag-payout-regions",
+      "difficulty": "easy",
+      "rationale": "The passage names the regions with same day payout, which is what the question asks.",
+      "request": {
+        "state": {
+          "question": "Which regions support same day payout?",
+          "passage": "Same day payout is available in the United States and Canada. Other regions settle in two business days."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": true
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rag-sla-wrong-plan",
+      "difficulty": "hard",
+      "rationale": "The passage gives the Enterprise credit and only points at where the Pro credit lives, so it does not answer the question asked.",
+      "request": {
+        "state": {
+          "question": "What service credit does the Pro plan give for downtime?",
+          "passage": "Enterprise customers receive a ten percent service credit for each hour of downtime beyond the monthly allowance. Pro plan credits are described in the plan comparison table."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          },
+          "credit_for_other_plan": {
+            "type": "noul",
+            "instructions": "Does the passage state a downtime credit for a plan other than the one the question asks about?",
+            "criteria": {
+              "true": "It gives a credit for a different plan.",
+              "false": "It gives no credit for any other plan."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": false
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": false
+        },
+        "credit_for_other_plan": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "rag-procurement-cancelled",
+      "difficulty": "medium",
+      "rationale": "The question assumes a vendor was selected; the passage says the procurement was cancelled and names no vendor.",
+      "request": {
+        "state": {
+          "question": "Which vendor did we select for the 2026 badge printers?",
+          "passage": "The badge printer procurement was cancelled in November 2025. The existing printers will be retained through 2027 and serviced under the current maintenance contract."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": false
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "rag-lisbon-office-relocation",
+      "difficulty": "easy",
+      "rationale": "The passage states what happened to the office in April, which is exactly the question.",
+      "request": {
+        "state": {
+          "question": "What happened to the Lisbon office in April?",
+          "passage": "The Lisbon office relocated to Parque das Nacoes in April. Desk assignments and the front desk phone number are unchanged."
+        },
+        "questions": {
+          "answer_evidence": {
+            "type": "noul",
+            "instructions": "Does the passage contain evidence that answers the question as asked?",
+            "criteria": {
+              "true": "The passage states the information the question asks for.",
+              "false": "The passage does not state the information the question asks for."
+            }
+          },
+          "premise_contradiction": {
+            "type": "noul",
+            "instructions": "Does the passage contradict something the question assumes?",
+            "criteria": {
+              "true": "The passage denies something the question takes for granted.",
+              "false": "The passage leaves the question's assumptions intact."
+            }
+          }
+        }
+      },
+      "targets": {
+        "answer_evidence": {
+          "type": "noul",
+          "expected": true
+        },
+        "premise_contradiction": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "rerank-ticket-refund-window",
+      "difficulty": "medium",
+      "rationale": "Two passages state the in app ticket refund rule; the merchandise and box office passages cover other refund paths.",
+      "request": {
+        "state": {
+          "query": "What is the refund window for event tickets bought in the app?",
+          "candidates": {
+            "cand_1": "Event tickets purchased in the app may be refunded up to forty eight hours before the event start time.",
+            "cand_2": "Refunds for merchandise orders are accepted within thirty days of delivery.",
+            "cand_3": "Tickets bought at the box office follow the venue's own refund rules and cannot be refunded in the app.",
+            "cand_4": "After the forty eight hour cutoff, app ticket refunds are issued only as event credit."
+          }
+        },
+        "questions": {
+          "cand_1": {
+            "type": "noul",
+            "instructions": "Does candidate cand_1 directly answer the query?",
+            "criteria": {
+              "true": "The candidate states part of the answer to the query.",
+              "false": "The candidate is about a different refund path or topic."
+            }
+          },
+          "cand_2": {
+            "type": "noul",
+            "instructions": "Does candidate cand_2 directly answer the query?",
+            "criteria": {
+              "true": "The candidate states part of the answer to the query.",
+              "false": "The candidate is about a different refund path or topic."
+            }
+          },
+          "cand_3": {
+            "type": "noul",
+            "instructions": "Does candidate cand_3 directly answer the query?",
+            "criteria": {
+              "true": "The candidate states part of the answer to the query.",
+              "false": "The candidate is about a different refund path or topic."
+            }
+          },
+          "cand_4": {
+            "type": "noul",
+            "instructions": "Does candidate cand_4 directly answer the query?",
+            "criteria": {
+              "true": "The candidate states part of the answer to the query.",
+              "false": "The candidate is about a different refund path or topic."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_1": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_2": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_4": {
+          "type": "noul",
+          "expected": true
+        }
+      },
+      "rankings": [
+        {
+          "name": "refund-window-top2",
+          "question_ids": [
+            "cand_1",
+            "cand_2",
+            "cand_3",
+            "cand_4"
+          ],
+          "expected_order": [
+            "cand_1",
+            "cand_4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rerank-camera-retention",
+      "difficulty": "hard",
+      "rationale": "Only the physical security standard states a camera retention period; the other three share the words retention or camera without stating it.",
+      "request": {
+        "state": {
+          "query": "Which document states how long security camera footage is kept?",
+          "candidates": {
+            "cand_1": "The visitor policy requires all guests to sign in at the lobby desk and wear a badge.",
+            "cand_2": "The physical security standard states that camera recordings are retained for thirty days and then overwritten.",
+            "cand_3": "The data retention schedule lists retention periods for email, chat, and ticket records.",
+            "cand_4": "The camera network diagram shows coverage of the loading dock and the lobby entrance."
+          }
+        },
+        "questions": {
+          "cand_1": {
+            "type": "noul",
+            "instructions": "Does candidate cand_1 state how long camera footage is kept?",
+            "criteria": {
+              "true": "The candidate gives a camera footage retention period.",
+              "false": "The candidate does not give that period."
+            }
+          },
+          "cand_2": {
+            "type": "noul",
+            "instructions": "Does candidate cand_2 state how long camera footage is kept?",
+            "criteria": {
+              "true": "The candidate gives a camera footage retention period.",
+              "false": "The candidate does not give that period."
+            }
+          },
+          "cand_3": {
+            "type": "noul",
+            "instructions": "Does candidate cand_3 state how long camera footage is kept?",
+            "criteria": {
+              "true": "The candidate gives a camera footage retention period.",
+              "false": "The candidate does not give that period."
+            }
+          },
+          "cand_4": {
+            "type": "noul",
+            "instructions": "Does candidate cand_4 state how long camera footage is kept?",
+            "criteria": {
+              "true": "The candidate gives a camera footage retention period.",
+              "false": "The candidate does not give that period."
+            }
+          }
+        }
+      },
+      "targets": {
+        "cand_1": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_2": {
+          "type": "noul",
+          "expected": true
+        },
+        "cand_3": {
+          "type": "noul",
+          "expected": false
+        },
+        "cand_4": {
+          "type": "noul",
+          "expected": false
+        }
+      },
+      "rankings": [
+        {
+          "name": "camera-retention-top1",
+          "question_ids": [
+            "cand_1",
+            "cand_2",
+            "cand_3",
+            "cand_4"
+          ],
+          "expected_order": [
+            "cand_2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sde-invoice-clean-record",
+      "difficulty": "medium",
+      "rationale": "Every extracted field is copied from the source and the empty purchase order matches a source that says none was supplied.",
+      "request": {
+        "state": {
+          "source_document": "Invoice 88-1421 from Harbour Freight Logistics, dated 12 March 2026. Bill to Northline Dairy, 40 Kellett Road. Line 1: pallet transfer, 1240.00 EUR. Line 2: cold storage surcharge, 310.00 EUR. Total due 1550.00 EUR, net thirty. The customer supplied no purchase order number.",
+          "extracted_record": {
+            "invoice_number": "88-1421",
+            "vendor": "Harbour Freight Logistics",
+            "invoice_date": "12 March 2026",
+            "total_due_eur": "1550.00",
+            "purchase_order": ""
+          }
+        },
+        "questions": {
+          "err_invoice_number": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted invoice number wrong?",
+            "criteria": {
+              "true": "88-1421 is not the value the source gives for that field.",
+              "false": "88-1421 is the value the source gives for that field."
+            }
+          },
+          "err_vendor": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted vendor wrong?",
+            "criteria": {
+              "true": "Harbour Freight Logistics is not the value the source gives for that field.",
+              "false": "Harbour Freight Logistics is the value the source gives for that field."
+            }
+          },
+          "err_total": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted total due wrong?",
+            "criteria": {
+              "true": "1550.00 EUR is not the value the source gives for that field.",
+              "false": "1550.00 EUR is the value the source gives for that field."
+            }
+          },
+          "empty_purchase_order_wrong": {
+            "type": "noul",
+            "instructions": "The record leaves the purchase order empty. Does the source document state a purchase order number?",
+            "criteria": {
+              "true": "The source gives a purchase order number, so the empty field is an extraction error.",
+              "false": "The source gives no purchase order number, so the empty field is correct."
+            }
+          },
+          "record_any_error": {
+            "type": "noul",
+            "instructions": "Is any field of the extracted record wrong given the source?",
+            "criteria": {
+              "true": "At least one field disagrees with the source.",
+              "false": "Every field agrees with the source."
+            }
+          }
+        }
+      },
+      "targets": {
+        "err_invoice_number": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_vendor": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_total": {
+          "type": "noul",
+          "expected": false
+        },
+        "empty_purchase_order_wrong": {
+          "type": "noul",
+          "expected": false
+        },
+        "record_any_error": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "sde-invoice-wrong-total",
+      "difficulty": "medium",
+      "rationale": "The record's total is 1250.00 where the source states 1550.00; the other fields are copied correctly.",
+      "request": {
+        "state": {
+          "source_document": "Invoice 88-1421 from Harbour Freight Logistics, dated 12 March 2026. Bill to Northline Dairy, 40 Kellett Road. Line 1: pallet transfer, 1240.00 EUR. Line 2: cold storage surcharge, 310.00 EUR. Total due 1550.00 EUR, net thirty. The customer supplied no purchase order number.",
+          "extracted_record": {
+            "invoice_number": "88-1421",
+            "vendor": "Harbour Freight Logistics",
+            "invoice_date": "12 March 2026",
+            "total_due_eur": "1250.00",
+            "bill_to": "Northline Dairy"
+          }
+        },
+        "questions": {
+          "err_total": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted total due wrong?",
+            "criteria": {
+              "true": "1250.00 EUR is not the value the source gives for that field.",
+              "false": "1250.00 EUR is the value the source gives for that field."
+            }
+          },
+          "err_invoice_date": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted invoice date wrong?",
+            "criteria": {
+              "true": "12 March 2026 is not the value the source gives for that field.",
+              "false": "12 March 2026 is the value the source gives for that field."
+            }
+          },
+          "err_bill_to": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted bill to party wrong?",
+            "criteria": {
+              "true": "Northline Dairy is not the value the source gives for that field.",
+              "false": "Northline Dairy is the value the source gives for that field."
+            }
+          },
+          "record_any_error": {
+            "type": "noul",
+            "instructions": "Is any field of the extracted record wrong given the source?",
+            "criteria": {
+              "true": "At least one field disagrees with the source.",
+              "false": "Every field agrees with the source."
+            }
+          }
+        }
+      },
+      "targets": {
+        "err_total": {
+          "type": "noul",
+          "expected": true
+        },
+        "err_invoice_date": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_bill_to": {
+          "type": "noul",
+          "expected": false
+        },
+        "record_any_error": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "sde-invoice-wrong-row",
+      "difficulty": "hard",
+      "rationale": "The two line amounts are swapped against their descriptions, so each amount belongs to the other row of the source.",
+      "request": {
+        "state": {
+          "source_document": "Invoice 88-1421 from Harbour Freight Logistics, dated 12 March 2026. Bill to Northline Dairy, 40 Kellett Road. Line 1: pallet transfer, 1240.00 EUR. Line 2: cold storage surcharge, 310.00 EUR. Total due 1550.00 EUR, net thirty. The customer supplied no purchase order number.",
+          "extracted_record": {
+            "line_1_description": "pallet transfer",
+            "line_1_amount_eur": "310.00",
+            "line_2_description": "cold storage surcharge",
+            "line_2_amount_eur": "1240.00",
+            "vendor": "Harbour Freight Logistics"
+          }
+        },
+        "questions": {
+          "err_line_1_description": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted line one description wrong?",
+            "criteria": {
+              "true": "pallet transfer is not the value the source gives for that field.",
+              "false": "pallet transfer is the value the source gives for that field."
+            }
+          },
+          "err_line_1_amount": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted line one amount wrong?",
+            "criteria": {
+              "true": "310.00 EUR is not the value the source gives for that field.",
+              "false": "310.00 EUR is the value the source gives for that field."
+            }
+          },
+          "err_line_2_description": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted line two description wrong?",
+            "criteria": {
+              "true": "cold storage surcharge is not the value the source gives for that field.",
+              "false": "cold storage surcharge is the value the source gives for that field."
+            }
+          },
+          "err_line_2_amount": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted line two amount wrong?",
+            "criteria": {
+              "true": "1240.00 EUR is not the value the source gives for that field.",
+              "false": "1240.00 EUR is the value the source gives for that field."
+            }
+          },
+          "err_vendor": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted vendor wrong?",
+            "criteria": {
+              "true": "Harbour Freight Logistics is not the value the source gives for that field.",
+              "false": "Harbour Freight Logistics is the value the source gives for that field."
+            }
+          }
+        }
+      },
+      "targets": {
+        "err_line_1_description": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_line_1_amount": {
+          "type": "noul",
+          "expected": true
+        },
+        "err_line_2_description": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_line_2_amount": {
+          "type": "noul",
+          "expected": true
+        },
+        "err_vendor": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "sde-referral-hallucinated-field",
+      "difficulty": "medium",
+      "rationale": "The referral letter never gives a provider identifier, so the extracted number is invented; the named clinic and reason are in the source.",
+      "request": {
+        "state": {
+          "source_document": "Referral letter dated 6 May 2026. Dr. Helen Mbeki of Rosebank Family Practice refers the patient to the cardiology clinic at Grey Hospital for evaluation of exertional chest pain. The letter asks that the appointment be booked within four weeks and gives the practice telephone number for scheduling.",
+          "extracted_record": {
+            "referring_provider": "Helen Mbeki",
+            "referring_provider_npi": "1477392015",
+            "destination_clinic": "cardiology clinic at Grey Hospital",
+            "reason": "exertional chest pain"
+          }
+        },
+        "questions": {
+          "err_referring_provider": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted referring provider name wrong?",
+            "criteria": {
+              "true": "Helen Mbeki is not the value the source gives for that field.",
+              "false": "Helen Mbeki is the value the source gives for that field."
+            }
+          },
+          "err_provider_npi": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted provider identifier wrong?",
+            "criteria": {
+              "true": "The source gives no provider identifier, so the extracted number cannot come from it.",
+              "false": "The source gives that provider identifier."
+            }
+          },
+          "err_destination_clinic": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted destination clinic wrong?",
+            "criteria": {
+              "true": "the cardiology clinic at Grey Hospital is not the value the source gives for that field.",
+              "false": "the cardiology clinic at Grey Hospital is the value the source gives for that field."
+            }
+          },
+          "err_reason": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted reason for referral wrong?",
+            "criteria": {
+              "true": "exertional chest pain is not the value the source gives for that field.",
+              "false": "exertional chest pain is the value the source gives for that field."
+            }
+          }
+        }
+      },
+      "targets": {
+        "err_referring_provider": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_provider_npi": {
+          "type": "noul",
+          "expected": true
+        },
+        "err_destination_clinic": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_reason": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "sde-empty-fields-split",
+      "difficulty": "medium",
+      "rationale": "The source gives no second contact, so that empty field is correct, but it does give the delivery window the record left empty.",
+      "request": {
+        "state": {
+          "source_document": "Work order WO-7731 for the Ashgrove site. Site contact is Dale Fenwick on the day shift. The crew may deliver the transformer between 06:00 and 09:00 on any weekday. No after hours contact has been nominated for this site.",
+          "extracted_record": {
+            "work_order": "WO-7731",
+            "site_contact": "Dale Fenwick",
+            "after_hours_contact": "",
+            "delivery_window": ""
+          }
+        },
+        "questions": {
+          "empty_after_hours_wrong": {
+            "type": "noul",
+            "instructions": "The record leaves the after hours contact empty. Does the source document name one?",
+            "criteria": {
+              "true": "The source names an after hours contact, so the empty field is an error.",
+              "false": "The source names no after hours contact, so the empty field is correct."
+            }
+          },
+          "empty_delivery_window_wrong": {
+            "type": "noul",
+            "instructions": "The record leaves the delivery window empty. Does the source document give one?",
+            "criteria": {
+              "true": "The source gives a delivery window, so the empty field is an error.",
+              "false": "The source gives no delivery window, so the empty field is correct."
+            }
+          },
+          "err_site_contact": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted site contact wrong?",
+            "criteria": {
+              "true": "Dale Fenwick is not the value the source gives for that field.",
+              "false": "Dale Fenwick is the value the source gives for that field."
+            }
+          },
+          "err_work_order": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted work order number wrong?",
+            "criteria": {
+              "true": "WO-7731 is not the value the source gives for that field.",
+              "false": "WO-7731 is the value the source gives for that field."
+            }
+          }
+        }
+      },
+      "targets": {
+        "empty_after_hours_wrong": {
+          "type": "noul",
+          "expected": false
+        },
+        "empty_delivery_window_wrong": {
+          "type": "noul",
+          "expected": true
+        },
+        "err_site_contact": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_work_order": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    },
+    {
+      "name": "sde-lab-flag-altered",
+      "difficulty": "hard",
+      "rationale": "The source flags the A1c result High while the record calls it within the reference range; the value itself and the empty glucose field are right.",
+      "request": {
+        "state": {
+          "source_document": "Laboratory report for visit 2026-04-18. Hemoglobin A1c 6.4 percent, flagged High by the laboratory. Fasting glucose was not drawn at this visit. Specimen collected at 08:15 and resulted the same day.",
+          "extracted_record": {
+            "a1c_percent": "6.4",
+            "a1c_flag": "within reference range",
+            "fasting_glucose": "",
+            "collection_time": "08:15"
+          }
+        },
+        "questions": {
+          "err_a1c_value": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted A1c value wrong?",
+            "criteria": {
+              "true": "6.4 percent is not the value the source gives for that field.",
+              "false": "6.4 percent is the value the source gives for that field."
+            }
+          },
+          "err_a1c_flag": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted A1c flag wrong?",
+            "criteria": {
+              "true": "within reference range is not the value the source gives for that field.",
+              "false": "within reference range is the value the source gives for that field."
+            }
+          },
+          "empty_fasting_glucose_wrong": {
+            "type": "noul",
+            "instructions": "The record leaves fasting glucose empty. Does the source document give a fasting glucose result?",
+            "criteria": {
+              "true": "The source gives a result, so the empty field is an error.",
+              "false": "The source says the test was not drawn, so the empty field is correct."
+            }
+          },
+          "err_collection_time": {
+            "type": "noul",
+            "instructions": "Given the source document, is the extracted collection time wrong?",
+            "criteria": {
+              "true": "08:15 is not the value the source gives for that field.",
+              "false": "08:15 is the value the source gives for that field."
+            }
+          },
+          "record_any_error": {
+            "type": "noul",
+            "instructions": "Is any field of the extracted record wrong given the source?",
+            "criteria": {
+              "true": "At least one field disagrees with the source.",
+              "false": "Every field agrees with the source."
+            }
+          }
+        }
+      },
+      "targets": {
+        "err_a1c_value": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_a1c_flag": {
+          "type": "noul",
+          "expected": true
+        },
+        "empty_fasting_glucose_wrong": {
+          "type": "noul",
+          "expected": false
+        },
+        "err_collection_time": {
+          "type": "noul",
+          "expected": false
+        },
+        "record_any_error": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "span-effective-date",
+      "difficulty": "medium",
+      "rationale": "The excerpt names four dates and only 1 February 2026 is the date the agreement becomes effective.",
+      "request": {
+        "state": {
+          "source_excerpt": "This Agreement is dated 14 January 2026 and becomes effective on 1 February 2026. The initial term ends on 31 January 2027. Invoices are issued on the first business day after 5 February 2026.",
+          "target_field": "the date the Agreement becomes effective"
+        },
+        "questions": {
+          "span": {
+            "type": "choice",
+            "instructions": "Choose the span from the excerpt that gives the target field. Choose not_present if the excerpt does not give it.",
+            "criteria": {
+              "s1": "14 January 2026",
+              "s2": "1 February 2026",
+              "s3": "31 January 2027",
+              "s4": "5 February 2026",
+              "not_present": "The excerpt does not give this value."
+            }
+          },
+          "term_end_stated": {
+            "type": "noul",
+            "instructions": "Does the excerpt state a date on which the initial term ends?",
+            "criteria": {
+              "true": "The excerpt gives an end date for the initial term.",
+              "false": "The excerpt gives no end date for the initial term."
+            }
+          }
+        }
+      },
+      "targets": {
+        "span": {
+          "type": "choice",
+          "expected": "s2"
+        },
+        "term_end_stated": {
+          "type": "noul",
+          "expected": true
+        }
+      }
+    },
+    {
+      "name": "span-notice-period-absent",
+      "difficulty": "hard",
+      "rationale": "The excerpt gives a cure period and a payment period but never a notice period for termination for convenience.",
+      "request": {
+        "state": {
+          "source_excerpt": "Either party may terminate this Agreement for convenience. Termination for cause requires a cure period of thirty days. Fees are invoiced monthly in arrears and are due within forty five days of the invoice date.",
+          "target_field": "the advance notice required to terminate for convenience"
+        },
+        "questions": {
+          "span": {
+            "type": "choice",
+            "instructions": "Choose the span from the excerpt that gives the target field. Choose not_present if the excerpt does not give it.",
+            "criteria": {
+              "s1": "thirty days",
+              "s2": "forty five days",
+              "s3": "monthly in arrears",
+              "not_present": "The excerpt does not give this value."
+            }
+          },
+          "period_stated": {
+            "type": "noul",
+            "instructions": "Does the excerpt state a notice period for termination for convenience?",
+            "criteria": {
+              "true": "The excerpt gives that notice period.",
+              "false": "The excerpt gives no notice period for termination for convenience."
+            }
+          }
+        }
+      },
+      "targets": {
+        "span": {
+          "type": "choice",
+          "expected": "not_present"
+        },
+        "period_stated": {
+          "type": "noul",
+          "expected": false
+        }
+      }
+    }
+  ]
+}

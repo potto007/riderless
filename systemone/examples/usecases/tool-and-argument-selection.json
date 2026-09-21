@@ -1,0 +1,1517 @@
+{
+  "suite": "tool-and-argument-selection",
+  "family": "Function or tool selection with closed arguments",
+  "source": [
+    "Function calling (function_calling)",
+    "Skill suggestion (skill_suggestion)",
+    "Mixed questions and speculative branches row of the build-spec pattern table",
+    "Fan-out pattern"
+  ],
+  "description": "Measures whether one prefill-only request can assemble a tool call: one Choice over a tool catalogue that always carries an explicit none option, closed-enumeration Choices for arguments, Nouls for optional-argument presence, per-member Nouls for set-valued arguments, and applicability gate Nouls that can reject an otherwise correct tool. The catalogue in every case contains overlapping siblings, so the pick turns on one clause of the request rather than on topic, and argument states carry a distractor value of the same type as the gold value. The headline metric is exact match on the assembled call, meaning the tool id plus every argument that belongs to the gold tool; tool-only accuracy, argument-only accuracy, and abstention precision and recall over the none cases are reported separately. In the gated cases the tool the request asks for is still the gold tool and its argument questions still carry gold labels fixed by the state, even though a false gate means a caller would not place the call: the gate must never move those answers. No case here asks an argument question that belongs to a tool it does not select. Only three cases are abstention cases and each states its negation in words, so the abstention numbers are thin and the suite holds no hard abstention probe. The none option does not sit in a fixed slot, so abstention cannot be read off answer position. This suite does not measure execution, retrieval, calendar or currency arithmetic, free-text argument generation, or probability calibration; no gold label here requires computing a number or resolving a date.",
+  "cases": [
+    {
+      "name": "order-status-plain-request",
+      "difficulty": "easy",
+      "rationale": "The customer names one order identifier, asks where it is, and rules out a refund in the same sentence.",
+      "request": {
+        "state": {
+          "request": "Hi, where is my order A-1183 right now? I do not want a refund, I just want to know when it will arrive.",
+          "account": {"customer_id": "C-77", "open_orders": ["A-1183"]}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "none": "No tool in this catalogue fulfils the request",
+              "search_orders": "Find orders matching a text query when the order identifier is unknown",
+              "refund_order": "Return money to the payment method for one known order identifier",
+              "get_order_status": "Report the current fulfilment status and delivery estimate for one known order identifier"
+            }
+          },
+          "arg_order_id": {
+            "type": "choice",
+            "instructions": "Select the order identifier the request refers to.",
+            "criteria": {
+              "A-1183": null,
+              "A-1190": null,
+              "not_stated": "The request names no order identifier"
+            }
+          },
+          "evid_status_only": {
+            "type": "noul",
+            "instructions": "The customer asks only for delivery information and rules out a refund.",
+            "criteria": {"true": "Only delivery information is wanted", "false": "Money back is also wanted"}
+          },
+          "target_identification": {
+            "type": "score",
+            "instructions": "Rate how precisely the state identifies the order the tool would act on.",
+            "criteria": [
+              "The order is not identified at all",
+              "The order is described but carries no identifier",
+              "The order is named by an explicit identifier"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "get_order_status"},
+        "arg_order_id": {"type": "choice", "expected": "A-1183"},
+        "evid_status_only": {"type": "noul", "expected": true},
+        "target_identification": {"type": "score", "expected_level": 2, "tolerance": 0}
+      }
+    },
+    {
+      "name": "meeting-book-new-slot",
+      "difficulty": "easy",
+      "rationale": "No event with Dana exists yet, so creating one is the only sibling that applies, and the duration and day are both stated.",
+      "request": {
+        "state": {
+          "request": "Please set up a new 30 minute check-in with Dana for Thursday.",
+          "calendar": {"existing_meetings_with_dana": []}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "schedule_meeting": "Create a calendar event that does not exist yet",
+              "reschedule_meeting": "Move an existing calendar event to a different time, leaving one event on the calendar",
+              "cancel_meeting": "Remove an existing calendar event without booking a replacement",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_duration": {
+            "type": "choice",
+            "instructions": "Select the meeting length the request asks for.",
+            "criteria": {
+              "fifteen_minutes": "A quarter of an hour",
+              "thirty_minutes": "Half an hour",
+              "sixty_minutes": "A full hour"
+            }
+          },
+          "arg_day": {
+            "type": "choice",
+            "instructions": "Select the day the request asks for.",
+            "criteria": {"tuesday": null, "wednesday": null, "thursday": null, "friday": null}
+          },
+          "evid_existing_event": {
+            "type": "noul",
+            "instructions": "The calendar in the state already holds a meeting with Dana.",
+            "criteria": {"true": "At least one such meeting is listed", "false": "No such meeting is listed"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "schedule_meeting"},
+        "arg_duration": {"type": "choice", "expected": "thirty_minutes"},
+        "arg_day": {"type": "choice", "expected": "thursday"},
+        "evid_existing_event": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "helpdesk-password-reset",
+      "difficulty": "easy",
+      "rationale": "The caller asks for a new password rather than a lockout clear, and names the corporate account against a second account on file.",
+      "request": {
+        "state": {
+          "ticket": "Caller cannot sign in after the holiday because she has forgotten her password. Identity was confirmed against the security questions on file. She asks for a password reset on the corporate account, not the lab account.",
+          "accounts": {"corporate": "u-4411", "lab": "u-9002"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "unlock_account": "Clear a lockout caused by failed sign-in attempts, keeping the current password in place",
+              "none": "No tool in this catalogue fulfils the request",
+              "create_account": "Provision a new account for a person who has none",
+              "reset_password": "Issue a new temporary password for one existing account"
+            }
+          },
+          "arg_account": {
+            "type": "choice",
+            "instructions": "Select the account the request refers to.",
+            "criteria": {
+              "u-4411": "The corporate account",
+              "u-9002": "The lab account",
+              "not_stated": "No account is identified"
+            }
+          },
+          "gate_identity_verified": {
+            "type": "noul",
+            "instructions": "The state records that the caller's identity was verified.",
+            "criteria": {"true": "A completed identity check is recorded", "false": "No identity check is recorded"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "reset_password"},
+        "arg_account": {"type": "choice", "expected": "u-4411"},
+        "gate_identity_verified": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "invoice-copy-currency",
+      "difficulty": "easy",
+      "rationale": "A copy of the document is asked for, payment is explicitly withheld, and the request states the billing currency against the vendor default.",
+      "request": {
+        "state": {
+          "request": "Send me a copy of invoice INV-2291. It was billed in euros. Do not pay it yet.",
+          "vendor": {"name": "Halberd Print", "default_currency": "GBP"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "pay_invoice": "Release payment for one invoice",
+              "dispute_invoice": "Open a formal dispute against one invoice",
+              "get_invoice": "Retrieve the document for one invoice identifier",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_currency": {
+            "type": "choice",
+            "instructions": "Select the currency this invoice was billed in.",
+            "criteria": {"eur": "Euro", "gbp": "Pound sterling", "usd": "US dollar"}
+          },
+          "opt_payment_withheld": {
+            "type": "noul",
+            "instructions": "The requester withholds authorisation to pay this invoice now.",
+            "criteria": {"true": "Payment is withheld", "false": "Payment is authorised"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "get_invoice"},
+        "arg_currency": {"type": "choice", "expected": "eur"},
+        "opt_payment_withheld": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "appointment-cancel-no-replacement",
+      "difficulty": "easy",
+      "rationale": "The slot is released with no new date requested, which separates cancelling from rescheduling, and the reason and the notification are both stated.",
+      "request": {
+        "state": {
+          "request": "The patient called to cancel her Friday physiotherapy appointment. She did not ask for a new date. Please let the clinician know.",
+          "appointment": {"id": "APT-5520", "clinician": "Dr Ivers"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "book_appointment": "Create a new appointment in a free slot",
+              "reschedule_appointment": "Move an existing appointment to a different slot, leaving one appointment booked",
+              "cancel_appointment": "Release an existing appointment slot without booking a replacement",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_reason": {
+            "type": "choice",
+            "instructions": "Select the reason code the state supports.",
+            "criteria": {
+              "clinician_unavailable": "The clinician cannot attend",
+              "no_show": "The patient did not attend a booked slot",
+              "patient_request": "The patient asked for it"
+            }
+          },
+          "opt_notify_clinician": {
+            "type": "noul",
+            "instructions": "The request asks for the clinician to be informed.",
+            "criteria": {"true": "Notifying the clinician is requested", "false": "No notification is requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "cancel_appointment"},
+        "arg_reason": {"type": "choice", "expected": "patient_request"},
+        "opt_notify_clinician": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "parcel-track-carrier",
+      "difficulty": "easy",
+      "rationale": "A location question with one named parcel and carrier, and the state denies the optional signature flag outright.",
+      "request": {
+        "state": {
+          "request": "Can you tell me where parcel PKG-778 is? It went out with Northwind. No signature is needed on delivery.",
+          "shipments": [
+            {"id": "PKG-778", "carrier": "Northwind"},
+            {"id": "PKG-802", "carrier": "Caldera"}
+          ]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "reroute_shipment": "Divert a shipment that is already in transit to a different address",
+              "file_damage_claim": "Open a damage claim for a shipment that has already been delivered",
+              "track_shipment": "Report the current location and status of one shipment",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_carrier": {
+            "type": "choice",
+            "instructions": "Select the carrier that holds the parcel named in the request.",
+            "criteria": {"caldera": null, "northwind": null, "not_stated": "No carrier is named"}
+          },
+          "opt_signature_required": {
+            "type": "noul",
+            "instructions": "Delivery of this parcel requires a signature.",
+            "criteria": {"true": "A signature is required", "false": "No signature is required"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "track_shipment"},
+        "arg_carrier": {"type": "choice", "expected": "northwind"},
+        "opt_signature_required": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "contract-clause-lookup",
+      "difficulty": "easy",
+      "rationale": "Reading a clause is a search, not an edit, and the request names the master services agreement rather than the second stored document.",
+      "request": {
+        "state": {
+          "request": "Find the termination for convenience clause in the Aldridge master services agreement. I am only reading it today, no edits.",
+          "documents": ["MSA-Aldridge-2024", "NDA-Aldridge-2023"]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "search_contract_clauses": "Locate clauses matching a topic inside stored contracts",
+              "draft_amendment": "Write a proposed amendment or addendum to a contract",
+              "send_for_signature": "Route a finished document to its named signatories",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_document": {
+            "type": "choice",
+            "instructions": "Select the document the request refers to.",
+            "criteria": {
+              "MSA-Aldridge-2024": "The master services agreement",
+              "NDA-Aldridge-2023": "The non-disclosure agreement",
+              "not_stated": "No document is identified"
+            }
+          },
+          "evid_read_only": {
+            "type": "noul",
+            "instructions": "The requester asks only to read the clause and rules out changing it.",
+            "criteria": {"true": "Only reading is requested", "false": "An edit is requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "search_contract_clauses"},
+        "arg_document": {"type": "choice", "expected": "MSA-Aldridge-2024"},
+        "evid_read_only": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "help-article-lookup",
+      "difficulty": "easy",
+      "rationale": "An internal lookup is asked for and sending to the customer is explicitly deferred, which separates the two sibling tools.",
+      "request": {
+        "state": {
+          "request": "A customer asked how to export their invoice history. Please pull up the internal help article that explains it. Nothing needs to go to the customer yet.",
+          "kb": {"topics": ["invoice export", "password rules"]}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "create_ticket": "Open a new support ticket for a reported problem",
+              "find_help_article": "Retrieve an internal help article on a topic",
+              "send_article_to_customer": "Email a help article to the customer",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_topic": {
+            "type": "choice",
+            "instructions": "Select the article topic the request refers to.",
+            "criteria": {
+              "invoice_export": "Exporting invoice history",
+              "password_rules": "Password requirements",
+              "not_stated": "No topic is identified"
+            }
+          },
+          "opt_send_deferred": {
+            "type": "noul",
+            "instructions": "Sending the article to the customer is deferred for now.",
+            "criteria": {"true": "Nothing goes to the customer yet", "false": "Sending now is requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "find_help_article"},
+        "arg_topic": {"type": "choice", "expected": "invoice_export"},
+        "opt_send_deferred": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "duplicate-charge-refund-not-status",
+      "difficulty": "medium",
+      "rationale": "Tracking is refused and money is asked for, so the refund sibling wins, and the duplicate charge sits on the newer of two orders.",
+      "request": {
+        "state": {
+          "request": "I was charged twice for order A-2041. The parcel itself already arrived, so I do not need tracking. Please put the second charge back on my card. My older order A-1990 is fine.",
+          "orders": [
+            {"id": "A-1990", "status": "delivered", "charges": 1},
+            {"id": "A-2041", "status": "delivered", "charges": 2}
+          ]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "search_orders": "Find orders matching a text query when the order identifier is unknown",
+              "get_order_status": "Report the current fulfilment status and delivery estimate for one known order identifier",
+              "refund_order": "Return money to the payment method for one known order identifier",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_order_id": {
+            "type": "choice",
+            "instructions": "Select the order identifier that carries the problem described in the request.",
+            "criteria": {"A-1990": null, "A-2041": null, "not_stated": "No order identifier is named"}
+          },
+          "evid_parcel_arrived": {
+            "type": "noul",
+            "instructions": "The customer states that the goods have already been delivered.",
+            "criteria": {"true": "Delivery is confirmed in the state", "false": "Delivery is not confirmed"}
+          },
+          "opt_full_order_refund": {
+            "type": "noul",
+            "instructions": "The customer asks for the whole order value back rather than one duplicated charge.",
+            "criteria": {"true": "The entire order value is claimed", "false": "Only the duplicated charge is claimed"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "refund_order"},
+        "arg_order_id": {"type": "choice", "expected": "A-2041"},
+        "evid_parcel_arrived": {"type": "noul", "expected": true},
+        "opt_full_order_refund": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "reschedule-existing-review",
+      "difficulty": "medium",
+      "rationale": "The event already exists and one review must remain booked, which rules out creating and cancelling, and the destination day is the third of three candidates.",
+      "request": {
+        "state": {
+          "request": "The quarterly review with Priya is on the calendar for Tuesday, but she is travelling that day. Move it to Friday. Same attendees, and I still want exactly one review on the calendar.",
+          "calendar": [
+            {"title": "Quarterly review with Priya", "day": "tuesday"},
+            {"title": "Budget sync", "day": "wednesday"}
+          ]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "none": "No tool in this catalogue fulfils the request",
+              "schedule_meeting": "Create a calendar event that does not exist yet",
+              "reschedule_meeting": "Move an existing calendar event to a different time, leaving one event on the calendar",
+              "cancel_meeting": "Remove an existing calendar event without booking a replacement"
+            }
+          },
+          "arg_new_day": {
+            "type": "choice",
+            "instructions": "Select the day the event should end up on.",
+            "criteria": {"tuesday": null, "wednesday": null, "friday": null}
+          },
+          "evid_event_exists": {
+            "type": "noul",
+            "instructions": "An event matching the request is already on the supplied calendar.",
+            "criteria": {"true": "A matching event is listed", "false": "No matching event is listed"}
+          },
+          "opt_attendees_change": {
+            "type": "noul",
+            "instructions": "The request asks for the attendee list to change.",
+            "criteria": {"true": "An attendee change is requested", "false": "The attendee list stays as it is"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "reschedule_meeting"},
+        "arg_new_day": {"type": "choice", "expected": "friday"},
+        "evid_event_exists": {"type": "noul", "expected": true},
+        "opt_attendees_change": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "rollback-after-failed-restart",
+      "difficulty": "medium",
+      "rationale": "The fault appeared with the new build and survived a restart, so returning to the previous build is the applicable sibling and that build is the older identifier.",
+      "request": {
+        "state": {
+          "deploy": {"service": "checkout-api", "released": "build 4412", "previous": "build 4408"},
+          "incident": "Roughly one checkout attempt in ten now fails; the rest succeed. The failures began within two minutes of build 4412 going live. Memory and processor use are normal and no saturation is reported. A restart was tried and the failures returned immediately."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "restart_service": "Restart a running service in place, keeping the deployed build",
+              "scale_service": "Change the number of running replicas to meet load",
+              "rollback_deployment": "Return a service to its previously deployed build",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_target_build": {
+            "type": "choice",
+            "instructions": "Select the build the service should be running after the action.",
+            "criteria": {
+              "4408": "The previously deployed build",
+              "4412": "The build released today",
+              "not_stated": "No build is identified"
+            }
+          },
+          "gate_restart_already_tried": {
+            "type": "noul",
+            "instructions": "A restart has already been attempted without lasting effect.",
+            "criteria": {"true": "A restart was tried and the fault returned", "false": "No restart has been tried"}
+          },
+          "impact_breadth": {
+            "type": "score",
+            "instructions": "Rate how wide the user impact described in the incident notes is.",
+            "criteria": [
+              "No user impact is described",
+              "Some requests or some users are affected",
+              "Every request or every user is affected"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "rollback_deployment"},
+        "arg_target_build": {"type": "choice", "expected": "4408"},
+        "gate_restart_already_tried": {"type": "noul", "expected": true},
+        "impact_breadth": {"type": "score", "expected_level": 1, "tolerance": 0}
+      }
+    },
+    {
+      "name": "escalation-team-set-membership",
+      "difficulty": "medium",
+      "rationale": "A set-valued argument: the ticket reports a payout failure and another business's data in the account, and explicitly denies a delivery problem and card exposure.",
+      "request": {
+        "state": {
+          "ticket": "A merchant reports that their payout for March never arrived and that their dashboard now shows a different business's trading name against their account. They confirm no card numbers were shown and that deliveries to their buyers are running normally.",
+          "teams": ["payments", "security", "shipping", "content"]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "notify_teams": "Alert one or more internal teams about a ticket",
+              "close_ticket": "Close a ticket that is already resolved",
+              "request_more_info": "Ask the reporter for detail that is missing",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "set_payments": {
+            "type": "noul",
+            "instructions": "The payments team belongs in the notified set.",
+            "criteria": {"true": "The ticket reports a money movement problem", "false": "The ticket reports no money movement problem"}
+          },
+          "set_security": {
+            "type": "noul",
+            "instructions": "The security team belongs in the notified set.",
+            "criteria": {"true": "The ticket reports data belonging to one party being visible to another", "false": "The ticket reports no data exposure"}
+          },
+          "set_shipping": {
+            "type": "noul",
+            "instructions": "The shipping team belongs in the notified set.",
+            "criteria": {"true": "The ticket reports a delivery or transport problem", "false": "The ticket reports no delivery or transport problem"}
+          },
+          "set_content": {
+            "type": "noul",
+            "instructions": "The content team belongs in the notified set.",
+            "criteria": {"true": "The ticket reports wrong help text or wording", "false": "The ticket reports no wording problem"}
+          },
+          "data_sensitivity": {
+            "type": "score",
+            "instructions": "Rate the most sensitive data the ticket says was visible.",
+            "criteria": [
+              "No customer data was visible",
+              "Only the merchant's own internal data was visible",
+              "Another business's identifying data was visible",
+              "Payment card numbers were visible"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "notify_teams"},
+        "set_payments": {"type": "noul", "expected": true},
+        "set_security": {"type": "noul", "expected": true},
+        "set_shipping": {"type": "noul", "expected": false},
+        "set_content": {"type": "noul", "expected": false},
+        "data_sensitivity": {"type": "score", "expected_level": 2, "tolerance": 0}
+      }
+    },
+    {
+      "name": "leave-request-absent-end-date",
+      "difficulty": "medium",
+      "rationale": "Filing a request is asked for rather than a balance check, the leave type is named, and the optional end date is genuinely absent while the start date is present.",
+      "request": {
+        "state": {
+          "request": "I need to put in a leave request starting on the fourteenth of April. It is for jury service. I do not know yet how long the court will need me, so I cannot give an end date.",
+          "policy": {"leave_types": ["annual", "sick", "jury_service", "unpaid"]}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "check_leave_balance": "Report how many leave days an employee has left",
+              "submit_leave_request": "File a new leave request for approval",
+              "cancel_leave_request": "Withdraw a leave request that was already filed",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_leave_type": {
+            "type": "choice",
+            "instructions": "Select the leave type the request falls under.",
+            "criteria": {
+              "annual": "Ordinary holiday",
+              "sick": "Illness",
+              "jury_service": "Attendance required by a court",
+              "unpaid": "Unpaid absence"
+            }
+          },
+          "opt_end_date_present": {
+            "type": "noul",
+            "instructions": "The state supplies an end date for this leave.",
+            "criteria": {"true": "An end date is given", "false": "No end date is given"}
+          },
+          "opt_start_date_present": {
+            "type": "noul",
+            "instructions": "The state supplies a start date for this leave.",
+            "criteria": {"true": "A start date is given", "false": "No start date is given"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "submit_leave_request"},
+        "arg_leave_type": {"type": "choice", "expected": "jury_service"},
+        "opt_end_date_present": {"type": "noul", "expected": false},
+        "opt_start_date_present": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "transfer-between-labelled-accounts",
+      "difficulty": "medium",
+      "rationale": "Three accounts of the same type sit in the state and only their labels distinguish the source, the destination, and the account the request excludes.",
+      "request": {
+        "state": {
+          "request": "Move money out of the account my salary is paid into and put it in the one I keep for the house deposit. Do not touch the joint account.",
+          "accounts": [
+            {"id": "ACC-31", "label": "joint household spending"},
+            {"id": "ACC-44", "label": "salary is paid into this account"},
+            {"id": "ACC-52", "label": "house deposit savings"}
+          ]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "pay_invoice": "Release payment for a supplier invoice",
+              "transfer_funds": "Move money between two accounts held by the same customer",
+              "open_account": "Open a new account for the customer",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_from_account": {
+            "type": "choice",
+            "instructions": "Select the account the money should leave.",
+            "criteria": {"ACC-31": null, "ACC-44": null, "ACC-52": null}
+          },
+          "arg_to_account": {
+            "type": "choice",
+            "instructions": "Select the account the money should arrive in.",
+            "criteria": {"ACC-31": null, "ACC-44": null, "ACC-52": null}
+          },
+          "opt_joint_account_involved": {
+            "type": "noul",
+            "instructions": "The joint household account is one side of the requested movement.",
+            "criteria": {"true": "It is the source or the destination", "false": "It is neither the source nor the destination"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "transfer_funds"},
+        "arg_from_account": {"type": "choice", "expected": "ACC-44"},
+        "arg_to_account": {"type": "choice", "expected": "ACC-52"},
+        "opt_joint_account_involved": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "refill-gate-controlled-drug",
+      "difficulty": "medium",
+      "rationale": "The refill tool is the one that matches the request, but the supplied policy plus the recorded review window makes the permission gate false.",
+      "request": {
+        "state": {
+          "request": "Patient asks for a repeat prescription of their anxiety medication, which the chart lists as a schedule II controlled drug.",
+          "chart": "The most recent in-person review is recorded as outside the twelve month window.",
+          "policy": "A repeat prescription for a schedule II controlled drug may be issued only when the patient's last in-person review falls inside the twelve month window."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that matches what is being asked for. Selecting a tool does not run it and does not decide whether it is permitted. Choose none if no catalogue tool matches.",
+            "criteria": {
+              "book_appointment": "Create a new appointment in a free slot",
+              "none": "No tool in this catalogue matches the request",
+              "cancel_appointment": "Release an existing appointment slot",
+              "request_prescription_refill": "File a repeat prescription request for an existing medication"
+            }
+          },
+          "gate_refill_permitted": {
+            "type": "noul",
+            "instructions": "Under the supplied policy, this repeat prescription may be issued without a new in-person review.",
+            "criteria": {"true": "The policy condition is satisfied", "false": "The policy condition is not satisfied"}
+          },
+          "evid_controlled_drug": {
+            "type": "noul",
+            "instructions": "The medication is recorded as a controlled drug.",
+            "criteria": {"true": "The chart records it as controlled", "false": "The chart does not record it as controlled"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "request_prescription_refill"},
+        "gate_refill_permitted": {"type": "noul", "expected": false},
+        "evid_controlled_drug": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "enrolment-broad-then-fine",
+      "difficulty": "medium",
+      "rationale": "A broad area choice and a fine tool choice over the same state, with three near-identical sections where only the Monday lab matches.",
+      "request": {
+        "state": {
+          "request": "A student wants to be added to the second year statistics lab that meets on Monday. She is already registered for the lecture but not for any lab. Nothing about fees comes into it.",
+          "catalogue": ["STA-201 lecture", "STA-201 lab Monday", "STA-201 lab Thursday"]
+        },
+        "questions": {
+          "broad_area": {
+            "type": "choice",
+            "instructions": "Select the service area this request belongs to.",
+            "criteria": {
+              "enrolment": "Adding or removing a student from a class section",
+              "billing": "Fees, invoices, and payment",
+              "records": "Transcripts and grade records",
+              "none": "No listed area fits"
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "drop_section": "Remove a student from a section they hold",
+              "add_to_section": "Add a student to one specific class section",
+              "issue_transcript": "Produce an official record of completed study",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_section": {
+            "type": "choice",
+            "instructions": "Select the section the student should be added to.",
+            "criteria": {
+              "STA-201-LEC": "The lecture",
+              "STA-201-LAB-MON": "The Monday lab",
+              "STA-201-LAB-THU": "The Thursday lab"
+            }
+          },
+          "opt_already_registered": {
+            "type": "noul",
+            "instructions": "The student already holds the section the request asks for.",
+            "criteria": {"true": "She already holds it", "false": "She does not hold it"}
+          }
+        }
+      },
+      "targets": {
+        "broad_area": {"type": "choice", "expected": "enrolment"},
+        "tool": {"type": "choice", "expected": "add_to_section"},
+        "arg_section": {"type": "choice", "expected": "STA-201-LAB-MON"},
+        "opt_already_registered": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "skill-suggestion-fit-gates",
+      "difficulty": "medium",
+      "rationale": "Only the extraction skill covers reading documents into a table; the other three cover work the request explicitly excludes, so the per-candidate fit gates reject them and the ranking puts extraction on top.",
+      "request": {
+        "state": {
+          "request": "I have a folder of scanned supplier contracts as documents. I want the payment terms pulled out of each one into a table, and I want to be told which contracts do not state payment terms at all.",
+          "note": "Nothing is to be edited, signed, or sent."
+        },
+        "questions": {
+          "skill_choice": {
+            "type": "choice",
+            "instructions": "Select the single skill that best fits the request. Choose none if no listed skill fits.",
+            "criteria": {
+              "contract_redlining": "Proposes edits to contract text and tracks the changes",
+              "none": "No listed skill fits the request",
+              "spreadsheet_formatting": "Applies styling and formulas to a table that already exists",
+              "document_extraction": "Reads documents and pulls named fields into a table, reporting fields it cannot find",
+              "signature_routing": "Routes finished documents to their signatories"
+            }
+          },
+          "fits_contract_redlining": {
+            "type": "noul",
+            "instructions": "The redlining skill fits this request.",
+            "criteria": {"true": "The request needs contract text edited", "false": "The request needs no edits"}
+          },
+          "fits_spreadsheet_formatting": {
+            "type": "noul",
+            "instructions": "The spreadsheet formatting skill fits this request.",
+            "criteria": {"true": "The request is about styling an existing table", "false": "The request is not about styling an existing table"}
+          },
+          "fits_document_extraction": {
+            "type": "noul",
+            "instructions": "The document extraction skill fits this request.",
+            "criteria": {"true": "The request needs named fields read out of documents", "false": "The request needs no field extraction"}
+          },
+          "fits_signature_routing": {
+            "type": "noul",
+            "instructions": "The signature routing skill fits this request.",
+            "criteria": {"true": "The request needs documents signed", "false": "The request needs nothing signed"}
+          }
+        }
+      },
+      "targets": {
+        "skill_choice": {"type": "choice", "expected": "document_extraction"},
+        "fits_contract_redlining": {"type": "noul", "expected": false},
+        "fits_spreadsheet_formatting": {"type": "noul", "expected": false},
+        "fits_document_extraction": {"type": "noul", "expected": true},
+        "fits_signature_routing": {"type": "noul", "expected": false}
+      },
+      "rankings": [
+        {
+          "name": "skill-fit-order",
+          "question_ids": [
+            "fits_contract_redlining",
+            "fits_spreadsheet_formatting",
+            "fits_document_extraction",
+            "fits_signature_routing"
+          ],
+          "expected_order": ["fits_document_extraction"]
+        }
+      ]
+    },
+    {
+      "name": "address-change-before-dispatch",
+      "difficulty": "medium",
+      "rationale": "The order has not shipped and cancelling is refused, so the address update applies and the in-transit sibling does not; the new address is the second of two on file.",
+      "request": {
+        "state": {
+          "request": "My order A-3310 has not shipped yet. I moved last week. I still want the order, so do not cancel it, but it has to go to the new flat.",
+          "addresses": {"on_file": "12 Harrow Lane", "new": "4 Bell Court"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "cancel_order": "Stop an order that has not shipped and return the money",
+              "update_shipping_address": "Change the delivery address of an order that has not shipped yet",
+              "reroute_shipment": "Divert a parcel that has already left the warehouse to a different address",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_address": {
+            "type": "choice",
+            "instructions": "Select the address the order should be delivered to.",
+            "criteria": {
+              "12 Harrow Lane": null,
+              "4 Bell Court": null,
+              "not_stated": "No delivery address is given"
+            }
+          },
+          "evid_awaiting_dispatch": {
+            "type": "noul",
+            "instructions": "The order is still waiting to be shipped.",
+            "criteria": {"true": "It has not left the warehouse", "false": "It has already left the warehouse"}
+          },
+          "opt_cancel_requested": {
+            "type": "noul",
+            "instructions": "The customer asks for the order to be cancelled.",
+            "criteria": {"true": "Cancellation is requested", "false": "Cancellation is refused or not requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "update_shipping_address"},
+        "arg_address": {"type": "choice", "expected": "4 Bell Court"},
+        "evid_awaiting_dispatch": {"type": "noul", "expected": true},
+        "opt_cancel_requested": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "nda-route-for-signature",
+      "difficulty": "medium",
+      "rationale": "The document is final and approved and the signatories are known, so routing applies rather than drafting or searching.",
+      "request": {
+        "state": {
+          "request": "The Barrow non-disclosure agreement is finished and both signatories are confirmed. Legal signed off on it yesterday. Get it in front of them.",
+          "document": {"id": "NDA-Barrow", "status": "final"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "draft_agreement": "Write a new agreement from a template",
+              "search_contract_clauses": "Locate clauses matching a topic inside stored contracts",
+              "send_for_signature": "Route a finished document to its named signatories",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "gate_legal_approved": {
+            "type": "noul",
+            "instructions": "Legal approval for this document is recorded in the state.",
+            "criteria": {"true": "Approval is recorded", "false": "No approval is recorded"}
+          },
+          "opt_drafting_needed": {
+            "type": "noul",
+            "instructions": "The document still needs to be written or edited.",
+            "criteria": {"true": "Drafting work remains", "false": "The document is finished"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "send_for_signature"},
+        "gate_legal_approved": {"type": "noul", "expected": true},
+        "opt_drafting_needed": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "reroute-parcel-in-transit",
+      "difficulty": "medium",
+      "rationale": "The mirror of the pre-dispatch case: the parcel is already on the van and delivery is still wanted, so the in-transit sibling applies and the home address is the destination.",
+      "request": {
+        "state": {
+          "request": "Parcel PKG-913 left the depot this morning and is on the van. Nobody will be at the office today, so send it to my home address instead. Keep the delivery, do not send it back to you.",
+          "addresses": {"office": "Unit 7 Fenn Road", "home": "22 Selby Street"}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "cancel_order": "Stop an order that has not shipped and return the money",
+              "update_shipping_address": "Change the delivery address of an order that has not shipped yet",
+              "reroute_shipment": "Divert a parcel that has already left the warehouse to a different address",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_address": {
+            "type": "choice",
+            "instructions": "Select the address the parcel should be delivered to.",
+            "criteria": {
+              "Unit 7 Fenn Road": null,
+              "22 Selby Street": null,
+              "not_stated": "No delivery address is given"
+            }
+          },
+          "evid_in_transit": {
+            "type": "noul",
+            "instructions": "The parcel has already left the depot.",
+            "criteria": {"true": "It is in transit", "false": "It is still at the depot"}
+          },
+          "opt_delivery_still_wanted": {
+            "type": "noul",
+            "instructions": "The customer still wants the parcel delivered rather than returned.",
+            "criteria": {"true": "Delivery is still wanted", "false": "A return to sender is requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "reroute_shipment"},
+        "arg_address": {"type": "choice", "expected": "22 Selby Street"},
+        "evid_in_transit": {"type": "noul", "expected": true},
+        "opt_delivery_still_wanted": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "ticket-needs-more-detail",
+      "difficulty": "medium",
+      "rationale": "The catalogue makes opening a ticket conditional on knowing the product and the fault, and the message supplies neither, so asking for detail is the applicable sibling.",
+      "request": {
+        "state": {
+          "ticket_draft": "Customer wrote: it broke again, same as before, please fix. The message names no product, no account, and no error text. The mailbox holds no earlier message from this address.",
+          "mailbox": {"earlier_messages_from_sender": 0}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "create_ticket": "Open a ticket once the affected product and the reported fault are both identified",
+              "close_ticket": "Close a ticket that is already resolved",
+              "request_more_info": "Ask the reporter for the detail a ticket needs before it can be opened",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "evid_product_identified": {
+            "type": "noul",
+            "instructions": "The message identifies which product is affected.",
+            "criteria": {"true": "A product is named", "false": "No product is named"}
+          },
+          "evid_recurrence_claimed": {
+            "type": "noul",
+            "instructions": "The customer claims this has happened before.",
+            "criteria": {"true": "A repeat is claimed", "false": "No repeat is claimed"}
+          },
+          "target_identification": {
+            "type": "score",
+            "instructions": "Rate how precisely the message identifies the product a ticket would be opened against.",
+            "criteria": [
+              "The product is not identified at all",
+              "The product is described but carries no name or identifier",
+              "The product is named explicitly"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "request_more_info"},
+        "evid_product_identified": {"type": "noul", "expected": false},
+        "evid_recurrence_claimed": {"type": "noul", "expected": true},
+        "target_identification": {"type": "score", "expected_level": 0, "tolerance": 0}
+      }
+    },
+    {
+      "name": "none-tax-rate-opinion",
+      "difficulty": "medium",
+      "rationale": "Every catalogue tool shares vocabulary with the message, but the customer asks for an opinion about what their accountant thinks and asks for no change, document, or dispute, so the gold pick is none. The note denies each catalogue tool in words, so the pick is a lookup rather than an inference: difficulty relabelled from hard to medium in audit.",
+      "request": {
+        "state": {
+          "request": "My invoice from you shows tax at twenty percent. My accountant says a reduced rate applies where I live. What rate does he think applies, and do you think I should follow his advice?",
+          "note": "The customer does not ask for a copy of the invoice, does not ask for a dispute to be opened, and does not ask for anything stored about their tax details to be changed."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "none": "No tool in this catalogue fulfils the request",
+              "get_invoice": "Retrieve the document for one invoice identifier",
+              "dispute_invoice": "Open a formal dispute against one invoice",
+              "update_tax_profile": "Change the stored tax country and rate held for a customer"
+            }
+          },
+          "evid_dispute_requested": {
+            "type": "noul",
+            "instructions": "The customer asks for a dispute to be opened.",
+            "criteria": {"true": "A dispute is requested", "false": "No dispute is requested"}
+          },
+          "evid_profile_change_requested": {
+            "type": "noul",
+            "instructions": "The customer asks for their stored tax country or rate to be changed.",
+            "criteria": {"true": "A stored change is requested", "false": "No stored change is requested"}
+          },
+          "evid_opinion_requested": {
+            "type": "noul",
+            "instructions": "The customer asks for an opinion rather than an action on the account.",
+            "criteria": {"true": "An opinion is asked for", "false": "Only an action is asked for"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "none"},
+        "evid_dispute_requested": {"type": "noul", "expected": false},
+        "evid_profile_change_requested": {"type": "noul", "expected": false},
+        "evid_opinion_requested": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "none-region-move-recommendation",
+      "difficulty": "medium",
+      "rationale": "The catalogue contains a region migration tool that matches the topic exactly, but the request asks for a recommendation and forbids touching production, so no tool applies. The request states the ban on production changes in words, so both nouls and the pick are lookups: difficulty relabelled from hard to medium in audit.",
+      "request": {
+        "state": {
+          "request": "Can you tell me whether we should move the checkout service to the new region this quarter? I want your reasoning and a recommendation. Do not change anything in production while you think about it.",
+          "environment": {"service": "checkout-api", "regions": ["eu-west", "eu-north"]}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "scale_service": "Change the number of running replicas to meet load",
+              "migrate_service_region": "Move a running service to a different region",
+              "none": "No tool in this catalogue fulfils the request",
+              "rollback_deployment": "Return a service to its previously deployed build"
+            }
+          },
+          "evid_change_requested": {
+            "type": "noul",
+            "instructions": "The requester asks for a production change to be made now.",
+            "criteria": {"true": "A change is requested now", "false": "No change is requested now"}
+          },
+          "evid_recommendation_requested": {
+            "type": "noul",
+            "instructions": "The requester asks for a recommendation.",
+            "criteria": {"true": "A recommendation is asked for", "false": "No recommendation is asked for"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "none"},
+        "evid_change_requested": {"type": "noul", "expected": false},
+        "evid_recommendation_requested": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "none-policy-question-no-booking",
+      "difficulty": "medium",
+      "rationale": "The message is about calendar policy wording for a handbook and nobody has asked for a booking, so all three calendar tools are inapplicable. The request names the three excluded actions in words, so the pick is a lookup: difficulty relabelled from hard to medium in audit.",
+      "request": {
+        "state": {
+          "request": "What is our policy on booking meetings inside someone's declared focus hours? Nobody has asked me to book, move, or cancel anything. I am writing the rule into the team handbook and want the wording right.",
+          "calendar": {"pending_requests": []}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "schedule_meeting": "Create a calendar event that does not exist yet",
+              "reschedule_meeting": "Move an existing calendar event to a different time",
+              "cancel_meeting": "Remove an existing calendar event",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "evid_booking_requested": {
+            "type": "noul",
+            "instructions": "Someone has asked for a meeting to be booked, moved, or cancelled.",
+            "criteria": {"true": "A calendar action is requested", "false": "No calendar action is requested"}
+          },
+          "evid_documentation_work": {
+            "type": "noul",
+            "instructions": "The requester is writing documentation.",
+            "criteria": {"true": "Documentation is being written", "false": "No documentation is being written"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "none"},
+        "evid_booking_requested": {"type": "noul", "expected": false},
+        "evid_documentation_work": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "courier-gate-unsupported-country",
+      "difficulty": "hard",
+      "rationale": "The booking tool is the one the request asks for, so the tool label stays, but the site's country is outside the listed coverage and the gate is false; the slot argument is still fixed by the request.",
+      "request": {
+        "state": {
+          "request": "Please book the courier collection for our Reykjavik warehouse on the usual afternoon slot.",
+          "site": {"name": "Reykjavik warehouse", "country": "Iceland"},
+          "coverage": "Courier collection booking is offered for sites in the United Kingdom, Ireland, and the Netherlands. Sites elsewhere must be arranged by the local site team."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that matches what is being asked for. Selecting a tool does not run it and does not decide whether it is permitted. Choose none if no catalogue tool matches.",
+            "criteria": {
+              "book_courier_collection": "Book a courier to collect goods from a site",
+              "cancel_courier_collection": "Cancel a collection that is already booked",
+              "track_shipment": "Report the current location and status of one shipment",
+              "none": "No tool in this catalogue matches the request"
+            }
+          },
+          "arg_slot": {
+            "type": "choice",
+            "instructions": "Select the collection slot the request asks for.",
+            "criteria": {"morning": null, "afternoon": null, "evening": null}
+          },
+          "gate_region_supported": {
+            "type": "noul",
+            "instructions": "The site's country is inside the coverage list supplied in the state.",
+            "criteria": {"true": "The country is listed as covered", "false": "The country is not listed as covered"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "book_courier_collection"},
+        "arg_slot": {"type": "choice", "expected": "afternoon"},
+        "gate_region_supported": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "records-gate-missing-entitlement",
+      "difficulty": "hard",
+      "rationale": "Attaching a record to an existing packet is what is asked for, the record type is the sensitive one, and the requester's listed entitlements do not include the one that record needs.",
+      "request": {
+        "state": {
+          "request": "The physiotherapy assistant asks for the patient's full mental health notes to be added to the referral packet she is preparing.",
+          "referral": {"id": "REF-88", "status": "open and already created"},
+          "access_policy": "Mental health notes may be released only to staff holding the mental health records entitlement.",
+          "requester_profile": {"entitlements": ["physiotherapy notes", "general clinical notes"]}
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that matches what is being asked for. Selecting a tool does not run it and does not decide whether it is permitted. Choose none if no catalogue tool matches.",
+            "criteria": {
+              "attach_record_to_referral": "Add a stored record to a referral packet that already exists",
+              "create_referral": "Start a new referral packet",
+              "none": "No tool in this catalogue matches the request",
+              "redact_record": "Remove identifying detail from a stored record"
+            }
+          },
+          "arg_record_type": {
+            "type": "choice",
+            "instructions": "Select the record type the request asks for.",
+            "criteria": {
+              "general_notes": "General clinical notes",
+              "physiotherapy_notes": "Physiotherapy notes",
+              "mental_health_notes": "Mental health notes"
+            }
+          },
+          "gate_requester_entitled": {
+            "type": "noul",
+            "instructions": "The requester holds the entitlement that the requested record type needs.",
+            "criteria": {"true": "The needed entitlement is listed on the profile", "false": "The needed entitlement is not listed on the profile"}
+          },
+          "evid_referral_exists": {
+            "type": "noul",
+            "instructions": "The referral packet already exists.",
+            "criteria": {"true": "An existing packet is recorded", "false": "No packet exists yet"}
+          },
+          "record_sensitivity": {
+            "type": "score",
+            "instructions": "Rate the sensitivity of the record type the request asks for, using the supplied levels.",
+            "criteria": [
+              "Administrative scheduling data",
+              "General clinical notes",
+              "Specialty clinical notes such as physiotherapy",
+              "Mental health notes"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "attach_record_to_referral"},
+        "arg_record_type": {"type": "choice", "expected": "mental_health_notes"},
+        "gate_requester_entitled": {"type": "noul", "expected": false},
+        "evid_referral_exists": {"type": "noul", "expected": true},
+        "record_sensitivity": {"type": "score", "expected_level": 3, "tolerance": 0}
+      }
+    },
+    {
+      "name": "replacement-already-arrived-return-label",
+      "difficulty": "hard",
+      "rationale": "The middle of a long account states that a working replacement already arrived, so only the return of the original faulty unit is left and neither a second replacement nor a refund is wanted.",
+      "request": {
+        "state": "Thread summary for account C-4102. On the second the customer bought a portable espresso machine and an accessory kit, which shipped separately. On the sixth she wrote that the machine leaked from the base on first use and sent photographs; the accessory kit was fine and she has kept it. A replacement machine was dispatched on the ninth and arrived on the eleventh; she has used it twice and confirms it works correctly, so nothing further needs to be sent out. On the twelfth she asked whether she should keep the faulty machine, and we said no. She has now written again: the box is taped up and waiting by her door, she does not want money back because the replacement is fine, and all that is left is getting the faulty one back to us at no cost to her.",
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils what is still outstanding. Selecting a tool does not run it. Choose none if no catalogue tool fulfils it.",
+            "criteria": {
+              "send_replacement": "Dispatch a replacement unit to the customer",
+              "issue_return_label": "Send the customer a prepaid label for returning an item at no cost to them",
+              "refund_order": "Return money to the payment method for one order",
+              "none": "No tool in this catalogue fulfils what is outstanding"
+            }
+          },
+          "arg_item": {
+            "type": "choice",
+            "instructions": "Select the item the action applies to.",
+            "criteria": {
+              "original_unit": "The machine that leaked on first use",
+              "replacement_unit": "The machine dispatched on the ninth",
+              "accessory_kit": "The separately shipped accessory kit"
+            }
+          },
+          "evid_replacement_arrived": {
+            "type": "noul",
+            "instructions": "A working replacement has already reached the customer.",
+            "criteria": {"true": "A working replacement is confirmed", "false": "No working replacement has arrived"}
+          },
+          "opt_refund_requested": {
+            "type": "noul",
+            "instructions": "The customer asks for money back.",
+            "criteria": {"true": "Money back is asked for", "false": "Money back is declined or not asked for"}
+          },
+          "target_identification": {
+            "type": "score",
+            "instructions": "Rate how precisely the state identifies the item that would be sent back.",
+            "criteria": [
+              "The item is not identified at all",
+              "The item is described but carries no serial number or identifier",
+              "The item is named by an explicit identifier"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "issue_return_label"},
+        "arg_item": {"type": "choice", "expected": "original_unit"},
+        "evid_replacement_arrived": {"type": "noul", "expected": true},
+        "opt_refund_requested": {"type": "noul", "expected": false},
+        "target_identification": {"type": "score", "expected_level": 1, "tolerance": 0}
+      }
+    },
+    {
+      "name": "addendum-template-negated-default",
+      "difficulty": "hard",
+      "rationale": "The usual template is named and then negated, and the governing law is given in the following clause, so the argument is the Irish template while filing is explicitly deferred.",
+      "request": {
+        "state": {
+          "request": "Draft the data processing addendum for the Kessel contract. It is not governed by the English law template we normally start from; the master agreement puts this one under Irish law. Do not file it anywhere yet.",
+          "templates": ["DPA-England", "DPA-Ireland", "DPA-Scotland"]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "draft_amendment": "Write a proposed amendment or addendum starting from a template",
+              "file_with_registry": "Lodge a finished document with an external registry",
+              "send_for_signature": "Route a finished document to its named signatories",
+              "none": "No tool in this catalogue fulfils the request"
+            }
+          },
+          "arg_template": {
+            "type": "choice",
+            "instructions": "Select the template the addendum should start from.",
+            "criteria": {"DPA-England": null, "DPA-Ireland": null, "DPA-Scotland": null}
+          },
+          "evid_default_overridden": {
+            "type": "noul",
+            "instructions": "The team's usual template is overridden for this contract.",
+            "criteria": {"true": "The usual template does not apply here", "false": "The usual template still applies"}
+          },
+          "opt_file_now": {
+            "type": "noul",
+            "instructions": "The requester asks for the document to be filed now.",
+            "criteria": {"true": "Filing now is requested", "false": "Filing is deferred or not requested"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "draft_amendment"},
+        "arg_template": {"type": "choice", "expected": "DPA-Ireland"},
+        "evid_default_overridden": {"type": "noul", "expected": true},
+        "opt_file_now": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "settled-transaction-refund-not-void",
+      "difficulty": "hard",
+      "rationale": "Void and refund differ only by settlement state; the state says the funds have already left the merchant account, and no issuer dispute exists, so the refund sibling is the only one that applies.",
+      "request": {
+        "state": {
+          "transaction": {"id": "TXN-6620", "stage": "settled overnight, funds have already left the merchant account", "issuer_dispute": "none raised"},
+          "request": "The customer was charged for a booking they had already cancelled. Put the money back to their card."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the request. Selecting a tool does not run it. Choose none if no catalogue tool fulfils the request.",
+            "criteria": {
+              "none": "No tool in this catalogue fulfils the request",
+              "void_transaction": "Cancel an authorisation that has not settled yet, so that no money ever moves",
+              "refund_transaction": "Return money for a transaction that has already settled",
+              "chargeback_dispute": "Respond to a card scheme dispute that the issuer has raised"
+            }
+          },
+          "arg_reason_code": {
+            "type": "choice",
+            "instructions": "Select the reason code the state supports.",
+            "criteria": {
+              "customer_cancellation": "The customer had cancelled the booking",
+              "duplicate_charge": "The same purchase was charged twice",
+              "fraud": "The card was used without the holder's permission"
+            }
+          },
+          "opt_issuer_dispute_open": {
+            "type": "noul",
+            "instructions": "The issuer has raised a card scheme dispute on this transaction.",
+            "criteria": {"true": "A dispute is open", "false": "No dispute is open"}
+          },
+          "settlement_stage": {
+            "type": "score",
+            "instructions": "Rate how far this transaction has progressed, using the supplied stages.",
+            "criteria": [
+              "Not authorised at all",
+              "Authorised but not settled",
+              "Settled",
+              "Settled and disputed by the issuer"
+            ]
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "refund_transaction"},
+        "arg_reason_code": {"type": "choice", "expected": "customer_cancellation"},
+        "opt_issuer_dispute_open": {"type": "noul", "expected": false},
+        "settlement_stage": {"type": "score", "expected_level": 2, "tolerance": 0}
+      }
+    },
+    {
+      "name": "corrected-instruction-in-thread",
+      "difficulty": "hard",
+      "rationale": "The first message asks for a cancellation and the second withdraws it in favour of an afternoon slot; the last message says the room is fine, so the room argument must not change.",
+      "request": {
+        "state": {
+          "thread": [
+            "09:02 Ana: Can you cancel Thursday's onboarding session? The new starter has dropped out.",
+            "09:40 Ana: Correction, she is coming after all. She just cannot make Thursday morning. Please keep the session and put it in the afternoon of the same day.",
+            "09:41 Ana: Same room is fine, no need to change that."
+          ]
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that fulfils the instruction that stands at the end of the thread. Selecting a tool does not run it. Choose none if no catalogue tool fulfils it.",
+            "criteria": {
+              "cancel_meeting": "Remove an existing event without booking a replacement",
+              "reschedule_meeting": "Move an existing event to a different time, leaving one event on the calendar",
+              "none": "No tool in this catalogue fulfils the standing instruction",
+              "book_room": "Reserve a different room for an event that already exists"
+            }
+          },
+          "arg_new_time": {
+            "type": "choice",
+            "instructions": "Select the slot the session should end up in.",
+            "criteria": {
+              "thursday_morning": "Thursday before midday",
+              "thursday_afternoon": "Thursday after midday",
+              "friday_morning": "Friday before midday"
+            }
+          },
+          "evid_earlier_instruction_withdrawn": {
+            "type": "noul",
+            "instructions": "A later message withdraws an instruction given earlier in the thread.",
+            "criteria": {"true": "An earlier instruction is withdrawn", "false": "No instruction is withdrawn"}
+          },
+          "opt_room_change": {
+            "type": "noul",
+            "instructions": "The room needs to change.",
+            "criteria": {"true": "A different room is wanted", "false": "The current room is fine"}
+          },
+          "evid_starter_attending": {
+            "type": "noul",
+            "instructions": "The new starter is attending the session after all.",
+            "criteria": {"true": "She is attending", "false": "She has dropped out"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "reschedule_meeting"},
+        "arg_new_time": {"type": "choice", "expected": "thursday_afternoon"},
+        "evid_earlier_instruction_withdrawn": {"type": "noul", "expected": true},
+        "opt_room_change": {"type": "noul", "expected": false},
+        "evid_starter_attending": {"type": "noul", "expected": true}
+      }
+    },
+    {
+      "name": "runbook-two-part-defect",
+      "difficulty": "hard",
+      "rationale": "The alert alone tempts a retry, but the runbook forbids retrying before the fault is understood and requires a defect after three identical nightly failures; the component is the job, since the warehouse host is serving other clients.",
+      "request": {
+        "state": {
+          "alert": "Nightly export job EXP-12 failed at 02:10 with connection refused against the warehouse host. It has failed the same way for three nights running. The warehouse host is up and is serving its other clients normally.",
+          "other_jobs": ["EXP-9 completed successfully at 01:40"],
+          "runbook": "Retry a failed job only after the cause of a connection fault is understood. Open a defect when a job fails in the same way on three consecutive nights."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that the runbook calls for. Selecting a tool does not run it. Choose none if no catalogue tool applies.",
+            "criteria": {
+              "retry_job": "Run a failed job again immediately",
+              "open_defect": "Record a reproducible fault for engineering to investigate",
+              "mute_alert": "Silence an alert without any further action",
+              "none": "No tool in this catalogue applies"
+            }
+          },
+          "arg_job_id": {
+            "type": "choice",
+            "instructions": "Select the job the alert is about.",
+            "criteria": {"EXP-9": null, "EXP-12": null, "not_stated": "No job is identified"}
+          },
+          "arg_defect_component": {
+            "type": "choice",
+            "instructions": "Select the component the evidence points at.",
+            "criteria": {
+              "export_job": "The nightly export job and how it connects",
+              "warehouse_host": "The warehouse database host itself",
+              "alerting": "The alerting system that raised the notification"
+            }
+          },
+          "gate_retry_allowed": {
+            "type": "noul",
+            "instructions": "The runbook permits retrying this job now.",
+            "criteria": {"true": "The retry condition is satisfied", "false": "The retry condition is not satisfied"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "open_defect"},
+        "arg_job_id": {"type": "choice", "expected": "EXP-12"},
+        "arg_defect_component": {"type": "choice", "expected": "export_job"},
+        "gate_retry_allowed": {"type": "noul", "expected": false}
+      }
+    },
+    {
+      "name": "expense-above-threshold-routing",
+      "difficulty": "hard",
+      "rationale": "Two policy rules must be combined: the receipt is attached and the category is allowed, which tempts automatic approval, but the amount sits above the manager threshold and that rule sends it to a director.",
+      "request": {
+        "state": {
+          "expense": {"amount_band": "above the manager threshold", "receipt": "attached", "category": "client dinner"},
+          "policy": "An expense above the manager threshold goes to a director for approval. An expense with no receipt is rejected without review. Client entertainment is an allowed category. Automatic approval requires every rule to be satisfied without escalation."
+        },
+        "questions": {
+          "tool": {
+            "type": "choice",
+            "instructions": "Select the one tool from the catalogue that the policy calls for. Selecting a tool does not run it. Choose none if no catalogue tool applies.",
+            "criteria": {
+              "auto_approve_expense": "Approve an expense that satisfies every policy rule without escalation",
+              "route_for_director_approval": "Send an expense to a director because it is above the manager threshold",
+              "reject_expense": "Reject an expense that a policy rule forbids outright",
+              "none": "No tool in this catalogue applies"
+            }
+          },
+          "opt_receipt_missing": {
+            "type": "noul",
+            "instructions": "The required receipt is missing.",
+            "criteria": {"true": "No receipt is attached", "false": "A receipt is attached"}
+          },
+          "evid_category_allowed": {
+            "type": "noul",
+            "instructions": "The expense category is permitted by the supplied policy.",
+            "criteria": {"true": "The category is allowed", "false": "The category is forbidden"}
+          }
+        }
+      },
+      "targets": {
+        "tool": {"type": "choice", "expected": "route_for_director_approval"},
+        "opt_receipt_missing": {"type": "noul", "expected": false},
+        "evid_category_allowed": {"type": "noul", "expected": true}
+      }
+    }
+  ]
+}
