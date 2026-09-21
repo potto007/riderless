@@ -32,6 +32,8 @@ PROFILE = BackendProfile(
     ubatch_size=256,
     threads=8,
     max_questions=32,
+    batched_mode=False,
+    batched_context=0,
     generated_tokens=0,
     callbacks_enabled=False,
     execution_mode="full",
@@ -88,6 +90,8 @@ class DeterministicBackend:
                     "processed_tokens": 10 + index,
                     "reused_tokens": 0,
                     "cache_cleared": True,
+                    "evaluation_mode": "sequential",
+                    "batch_sequences": 1,
                     "timing_ms": 1.0,
                 }
             )
@@ -100,9 +104,41 @@ class DeterministicBackend:
                 "generated_tokens": 0,
                 "callbacks_enabled": False,
                 "execution_mode": "full",
+                "batched_fallback": None,
                 "questions": rows,
             }
         )
+
+
+BATCHED_PROFILE = PROFILE.model_copy(
+    update={"batched_mode": True, "batched_context": 8192}
+)
+
+
+class BatchedBackend(DeterministicBackend):
+    """A batched worker that may be told to decline a request."""
+
+    def __init__(self, *, fallback: bool = False) -> None:
+        super().__init__()
+        self.fallback = fallback
+
+    async def start(self) -> BackendProfile:
+        self.started += 1
+        self.profile = BATCHED_PROFILE
+        self.ready = True
+        return BATCHED_PROFILE
+
+    async def evaluate(
+        self, batch: CompiledBatch, *, timeout: float
+    ) -> WorkerBatchResult:
+        result = await super().evaluate(batch, timeout=timeout)
+        payload = result.model_dump()
+        payload["batched_fallback"] = "context" if self.fallback else None
+        if not self.fallback:
+            for row in payload["questions"]:
+                row["evaluation_mode"] = "batched"
+                row["batch_sequences"] = len(payload["questions"])
+        return WorkerBatchResult.model_validate(payload)
 
 
 class FailingStartupBackend(DeterministicBackend):
@@ -353,6 +389,59 @@ async def test_control_token_content_is_a_distinct_client_error() -> None:
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "unsupported_content"
     assert health.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_batched_opt_in_is_reported_and_off_by_default() -> None:
+    backend = DeterministicBackend()
+    async with client_for(backend) as client:
+        models = await client.get("/v1/models")
+
+    runtime = models.json()["models"][0]["runtime"]
+    assert (runtime["batched"], runtime["batched_context"]) == (False, 0)
+    assert ApiConfig().batched is False
+
+    config = ApiConfig(batched=True, batched_context=4096)
+    assert (config.batched, config.batched_context) == (True, 4096)
+    with pytest.raises(ValueError, match="below context_size"):
+        ApiConfig(batched=True, batched_context=1024)
+    # A typo must not be able to reserve the whole card: the largest request
+    # that could ever need cells is max_questions full contexts.
+    ApiConfig(batched=True, batched_context=32 * 2048)
+    with pytest.raises(ValueError, match="max_questions"):
+        ApiConfig(batched=True, batched_context=32 * 2048 + 1)
+
+
+def test_the_batched_cache_bounds_do_not_constrain_a_sequential_worker() -> None:
+    # A sequential worker allocates no batched cache, so the unused default
+    # batched_context must not refuse a small context or question limit.
+    assert ApiConfig(context_size=128).batched is False
+    assert ApiConfig(max_questions=3).batched is False
+    # The same two settings still trip the cap once batching is on.
+    with pytest.raises(ValueError, match="max_questions"):
+        ApiConfig(batched=True, context_size=128)
+    with pytest.raises(ValueError, match="max_questions"):
+        ApiConfig(batched=True, max_questions=3)
+
+
+@pytest.mark.asyncio
+async def test_a_batched_worker_names_its_regime_in_the_public_body() -> None:
+    async with client_for(DeterministicBackend()) as client:
+        sequential = await client.post("/v1/decisions", json=REQUEST)
+    async with client_for(BatchedBackend()) as client:
+        batched = await client.post("/v1/decisions", json=REQUEST)
+    async with client_for(BatchedBackend(fallback=True)) as client:
+        declined = await client.post("/v1/decisions", json=REQUEST)
+
+    # A sequential worker has one regime and reports it in the handshake only.
+    assert "evaluation" not in sequential.json()
+    assert batched.json()["evaluation"] == {"mode": "batched"}
+    # Without diagnostics this is the caller's only signal that the request was
+    # answered in the other numeric regime.
+    assert declined.json()["evaluation"] == {
+        "mode": "sequential",
+        "fallback": "context",
+    }
 
 
 @pytest.mark.asyncio

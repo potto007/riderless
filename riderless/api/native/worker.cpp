@@ -26,6 +26,7 @@ using steady_clock = std::chrono::steady_clock;
 namespace {
 
 constexpr size_t MAX_PROTOCOL_BYTES = 4 * 1024 * 1024;
+constexpr int PROTOCOL_VERSION = 3;
 constexpr const char * MODEL_ID = "local-gemma-riderless-v1";
 constexpr const char * PROMPT_VERSION = "riderless-gemma-choice-v1";
 constexpr const char * ANSWER_PREFIX = "Answer:\n";
@@ -44,6 +45,9 @@ struct settings {
     int threads = 8;
     int max_questions = 32;
     bool gpu = false;
+    // Opt-in batched mode (ADR 0004). Off keeps the ADR 0002 context and path.
+    bool batched = false;
+    int batched_context = 0;
 };
 
 struct prepared_question {
@@ -72,15 +76,22 @@ int parse_positive(const std::string & text, const std::string & name) {
 settings parse_args(int argc, char ** argv) {
     std::map<std::string, std::string> values;
     bool gpu = false;
+    bool batched = false;
     const std::set<std::string> valued{
         "--model", "--model-sha256", "--runtime-sha256", "--context",
         "--batch", "--ubatch", "--threads", "--max-questions",
+        "--batched-context",
     };
     for (int index = 1; index < argc; ++index) {
         const std::string key(argv[index]);
         if (key == "--gpu") {
             if (gpu) throw std::runtime_error("Repeated --gpu");
             gpu = true;
+            continue;
+        }
+        if (key == "--batched") {
+            if (batched) throw std::runtime_error("Repeated --batched");
+            batched = true;
             continue;
         }
         if (!valued.count(key) || index + 1 >= argc || values.count(key)) {
@@ -104,7 +115,18 @@ settings parse_args(int argc, char ** argv) {
     result.max_questions = parse_positive(
         values.at("--max-questions"), "max-questions");
     result.gpu = gpu;
+    result.batched = batched;
     if (result.max_questions > 32) throw std::runtime_error("max-questions exceeds 32");
+    if (batched != (values.count("--batched-context") > 0)) {
+        throw std::runtime_error("--batched and --batched-context go together");
+    }
+    if (batched) {
+        result.batched_context = parse_positive(
+            values.at("--batched-context"), "batched-context");
+        if (result.batched_context < result.context) {
+            throw std::runtime_error("batched-context is below the context size");
+        }
+    }
     return result;
 }
 
@@ -396,7 +418,185 @@ json evaluate_question(
         {"reused_tokens", reused},
         {"cache_cleared", !reuse},
         {"timing_ms", elapsed_ms(started)},
+        {"evaluation_mode", "sequential"},
+        {"batch_sequences", 1},
     };
+}
+
+struct batch_holder {
+    llama_batch batch;
+
+    explicit batch_holder(int32_t capacity)
+        : batch(llama_batch_init(capacity, 0, 1)) {}
+    ~batch_holder() { llama_batch_free(batch); }
+    batch_holder(const batch_holder &) = delete;
+    batch_holder & operator=(const batch_holder &) = delete;
+};
+
+// The prefix every question of the request shares, never longer than the split
+// a question computed from its own prompt. Unlike the sequential split this one
+// does look at the siblings: batched mode has already given up sibling
+// independence (ADR 0004), and one request-wide prefix is what seq_cp needs.
+size_t batched_prefix_tokens(const std::vector<prepared_question> & questions) {
+    size_t prefix = questions.front().prefix_tokens;
+    for (const auto & question : questions) {
+        prefix = std::min(prefix, question.prefix_tokens);
+    }
+    for (size_t index = 1; index < questions.size() && prefix > 0; ++index) {
+        const auto & first = questions.front().tokens;
+        const auto & other = questions.at(index).tokens;
+        const size_t limit = std::min({prefix, first.size(), other.size()});
+        size_t common = 0;
+        while (common < limit && first.at(common) == other.at(common)) ++common;
+        prefix = common;
+    }
+    return prefix < MIN_SHARED_PREFIX_TOKENS ? 0 : prefix;
+}
+
+// KV cells a batched request occupies. The cache is unified, so seq_cp only
+// tags the prefix cells with another sequence id and costs no extra cells.
+size_t batched_cell_count(
+        const std::vector<prepared_question> & questions, size_t prefix) {
+    size_t cells = prefix;
+    for (const auto & question : questions) {
+        cells += question.tokens.size() - prefix;
+    }
+    return cells;
+}
+
+// One sequence per question over a shared prefix, all remainders decoded
+// together. Every question reads its logits at its own last token.
+json evaluate_batched(
+        llama_context * context,
+        const llama_vocab * vocab,
+        const std::vector<prepared_question> & questions,
+        int batch_size,
+        size_t prefix) {
+    auto * memory = llama_get_memory(context);
+    llama_memory_clear(memory, true);
+    auto mark = steady_clock::now();
+    const size_t count = questions.size();
+    const int vocabulary_size = llama_vocab_n_tokens(vocab);
+    std::vector<size_t> processed(count, 0);
+    std::vector<double> timing(count, 0.0);
+    std::vector<std::vector<double>> vocabulary_logits(count);
+
+    if (prefix > 0) {
+        // Same chunking as the sequential path, so the prefix itself is
+        // prefilled the same way a single-question request would prefill it.
+        size_t offset = 0;
+        for (const size_t chunk : riderless::prefill_chunks(
+                 prefix, static_cast<size_t>(batch_size))) {
+            auto batch = llama_batch_get_one(
+                const_cast<llama_token *>(questions.front().tokens.data()) + offset,
+                static_cast<int32_t>(chunk));
+            if (llama_decode(context, batch) != 0) {
+                throw std::runtime_error("Batched prefix prefill failed");
+            }
+            offset += chunk;
+        }
+        processed.at(0) = prefix;
+        for (size_t sequence = 1; sequence < count; ++sequence) {
+            llama_memory_seq_cp(
+                memory, 0, static_cast<llama_seq_id>(sequence), -1, -1);
+        }
+    }
+
+    struct remainder_token {
+        size_t question;
+        size_t position;
+    };
+    std::vector<remainder_token> pending;
+    for (size_t index = 0; index < count; ++index) {
+        for (size_t position = prefix;
+             position < questions.at(index).tokens.size(); ++position) {
+            pending.push_back({index, position});
+        }
+    }
+    if (pending.empty()) throw std::runtime_error("Batched request prefills nothing");
+
+    batch_holder holder(batch_size);
+    const size_t step = static_cast<size_t>(batch_size);
+    for (size_t begin = 0; begin < pending.size(); begin += step) {
+        const size_t end = std::min(pending.size(), begin + step);
+        llama_batch & batch = holder.batch;
+        batch.n_tokens = static_cast<int32_t>(end - begin);
+        for (size_t index = begin; index < end; ++index) {
+            const remainder_token & item = pending.at(index);
+            const auto & question = questions.at(item.question);
+            const size_t slot = index - begin;
+            batch.token[slot] = question.tokens.at(item.position);
+            batch.pos[slot] = static_cast<llama_pos>(item.position);
+            batch.n_seq_id[slot] = 1;
+            // The only sequence this token ever belongs to. A sibling's cells
+            // never carry it, so the attention mask always drops them.
+            batch.seq_id[slot][0] = static_cast<llama_seq_id>(item.question);
+            batch.logits[slot] =
+                item.position + 1 == question.tokens.size() ? 1 : 0;
+            processed.at(item.question) += 1;
+        }
+        if (llama_decode(context, batch) != 0) {
+            throw std::runtime_error("Batched prefill failed");
+        }
+        llama_synchronize(context);
+        for (size_t index = begin; index < end; ++index) {
+            const size_t slot = index - begin;
+            if (!batch.logits[slot]) continue;
+            const float * raw_logits =
+                llama_get_logits_ith(context, static_cast<int32_t>(slot));
+            if (!raw_logits) throw std::runtime_error("Missing full-model logits");
+            auto & row = vocabulary_logits.at(pending.at(index).question);
+            row.assign(raw_logits, raw_logits + vocabulary_size);
+            // Measured share of the batched evaluation: the time since the
+            // previous readout, so the per-question values sum to the whole.
+            timing.at(pending.at(index).question) = elapsed_ms(mark);
+            mark = steady_clock::now();
+        }
+    }
+
+    json results = json::array();
+    for (size_t index = 0; index < count; ++index) {
+        const auto & question = questions.at(index);
+        const auto & vocabulary = vocabulary_logits.at(index);
+        if (vocabulary.size() != static_cast<size_t>(vocabulary_size)) {
+            throw std::runtime_error("Batched question produced no logits");
+        }
+        // Each sequence must hold its own prompt and nothing else.
+        if (llama_memory_seq_pos_max(memory, static_cast<llama_seq_id>(index)) !=
+                static_cast<llama_pos>(question.tokens.size()) - 1) {
+            throw std::runtime_error("Batched sequence differs from its own prompt");
+        }
+        std::vector<double> label_logits;
+        for (const int token_id : question.label_token_ids) {
+            label_logits.push_back(vocabulary.at(static_cast<size_t>(token_id)));
+        }
+        (void) riderless::stable_softmax(label_logits);
+        const auto summary = riderless::summarize_vocabulary(
+            vocabulary, question.label_token_ids);
+        const size_t reused = index == 0 ? 0 : prefix;
+        if (processed.at(index) + reused != question.tokens.size()) {
+            throw std::runtime_error("Processed token accounting changed");
+        }
+        results.push_back({
+            {"id", question.id},
+            {"label_logits", label_logits},
+            {"label_token_ids", question.label_token_ids},
+            {"allowed_label_mass", summary.allowed_mass},
+            {"full_vocabulary_argmax", {
+                {"token_id", summary.argmax_token_id},
+                {"logit", summary.argmax_logit},
+            }},
+            {"prompt_sha256", sha256_hex(question.prompt)},
+            {"prompt_tokens", question.tokens.size()},
+            {"processed_tokens", processed.at(index)},
+            {"reused_tokens", reused},
+            {"cache_cleared", reused == 0},
+            {"timing_ms", timing.at(index)},
+            {"evaluation_mode", "batched"},
+            {"batch_sequences", count},
+        });
+    }
+    return results;
 }
 
 }  // namespace
@@ -431,10 +631,16 @@ int main(int argc, char ** argv) {
         auto [labels, token_ids] = validate_alphabet(vocab, templates.get());
 
         auto context_params = llama_context_default_params();
-        context_params.n_ctx = static_cast<uint32_t>(config.context);
+        // Batched mode needs one sequence per question and room for the prefix
+        // plus every remainder. A unified cache keeps the copied prefix in one
+        // set of cells, so seq_cp costs no cells and no buffer copy.
+        context_params.n_ctx = static_cast<uint32_t>(
+            config.batched ? config.batched_context : config.context);
         context_params.n_batch = static_cast<uint32_t>(config.batch);
         context_params.n_ubatch = static_cast<uint32_t>(config.ubatch);
-        context_params.n_seq_max = 1;
+        context_params.n_seq_max =
+            config.batched ? static_cast<uint32_t>(config.max_questions) : 1;
+        context_params.kv_unified = config.batched;
         context_params.n_threads = config.threads;
         context_params.n_threads_batch = config.threads;
         context_params.swa_full = true;
@@ -448,7 +654,7 @@ int main(int argc, char ** argv) {
 
         const json hello = {
             {"type", "hello"},
-            {"protocol_version", 2},
+            {"protocol_version", PROTOCOL_VERSION},
             {"model_id", MODEL_ID},
             {"model_name", std::string(description)},
             {"model_sha256", config.model_sha256},
@@ -460,6 +666,8 @@ int main(int argc, char ** argv) {
             {"ubatch_size", config.ubatch},
             {"threads", config.threads},
             {"max_questions", config.max_questions},
+            {"batched_mode", config.batched},
+            {"batched_context", config.batched_context},
             {"generated_tokens", 0},
             {"callbacks_enabled", false},
             {"execution_mode", "full"},
@@ -507,11 +715,26 @@ int main(int argc, char ** argv) {
                 continue;
             }
             json results = json::array();
-            // Never outlives the request: no state is carried between callers.
-            std::vector<llama_token> cached_prefix;
-            for (const auto & question : questions) {
-                results.push_back(evaluate_question(
-                    context.get(), vocab, question, config.batch, cached_prefix));
+            std::string fallback;
+            if (config.batched) {
+                const size_t prefix = batched_prefix_tokens(questions);
+                if (batched_cell_count(questions, prefix) >
+                        static_cast<size_t>(config.batched_context)) {
+                    // Honest fallback: the sequential path below answers the
+                    // whole request and the response names the reason.
+                    fallback = "context";
+                } else {
+                    results = evaluate_batched(
+                        context.get(), vocab, questions, config.batch, prefix);
+                }
+            }
+            if (results.empty()) {
+                // Never outlives the request: no state is carried between callers.
+                std::vector<llama_token> cached_prefix;
+                for (const auto & question : questions) {
+                    results.push_back(evaluate_question(
+                        context.get(), vocab, question, config.batch, cached_prefix));
+                }
             }
             const json response = {
                 {"type", "result"},
@@ -521,6 +744,7 @@ int main(int argc, char ** argv) {
                 {"generated_tokens", 0},
                 {"callbacks_enabled", false},
                 {"execution_mode", "full"},
+                {"batched_fallback", fallback.empty() ? json() : json(fallback)},
                 {"questions", results},
             };
             const std::string serialized = response.dump();

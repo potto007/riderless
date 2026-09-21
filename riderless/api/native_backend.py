@@ -56,6 +56,8 @@ class NativeBackend:
         context_size: int = 2048,
         batch_size: int = 256,
         ubatch_size: int = 256,
+        batched: bool = False,
+        batched_context: int = 8192,
         threads: int = 8,
         max_questions: int = 32,
         max_response_bytes: int = 4 * 1024 * 1024,
@@ -70,6 +72,8 @@ class NativeBackend:
         self.context_size = context_size
         self.batch_size = batch_size
         self.ubatch_size = ubatch_size
+        self.batched = batched
+        self.batched_context = batched_context if batched else 0
         self.threads = threads
         self.max_questions = max_questions
         self.max_response_bytes = max_response_bytes
@@ -183,6 +187,8 @@ class NativeBackend:
             ]
             if self.gpu:
                 command.append("--gpu")
+            if self.batched:
+                command += ["--batched", "--batched-context", str(self.batched_context)]
             environment = os.environ.copy()
             current_library_path = environment.get("LD_LIBRARY_PATH")
             environment["LD_LIBRARY_PATH"] = (
@@ -202,7 +208,7 @@ class NativeBackend:
             raw = await asyncio.wait_for(
                 self._read_json_line(), timeout=self.startup_timeout
             )
-            if raw.get("type") != "hello" or raw.get("protocol_version") != 2:
+            if raw.get("type") != "hello" or raw.get("protocol_version") != 3:
                 raise BackendProtocolError("invalid worker handshake")
             profile_payload = {
                 key: value
@@ -224,6 +230,8 @@ class NativeBackend:
                 or profile.ubatch_size != self.ubatch_size
                 or profile.threads != self.threads
                 or profile.max_questions != self.max_questions
+                or profile.batched_mode != self.batched
+                or profile.batched_context != self.batched_context
             ):
                 raise BackendProtocolError(
                     "worker handshake differs from configuration"

@@ -16,6 +16,7 @@ suites were re-run rather than reattributed.
 | [prefix-reuse.md](prefix-reuse.md) | `afeebe103bd99cda8f5dfaefcabadf890db7fda7` |
 | [worker-build-comparison.md](worker-build-comparison.md) | `afeebe103bd99cda8f5dfaefcabadf890db7fda7`, held fixed on both sides of that comparison |
 | This page | `v0.4.1` = commit `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`, compared against `afeebe1` |
+| [batched-mode.md](batched-mode.md) | `v0.4.1` = commit `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4` |
 
 Those pages are left exactly as they were measured. Nothing on them has been
 rewritten to look like a v0.4.1 result.

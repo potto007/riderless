@@ -41,14 +41,19 @@ p.add_argument('--runtime-sha256'); p.add_argument('--context', type=int)
 p.add_argument('--batch', type=int); p.add_argument('--ubatch', type=int)
 p.add_argument('--threads', type=int); p.add_argument('--max-questions', type=int)
 p.add_argument('--gpu', action='store_true')
+p.add_argument('--batched', action='store_true')
+p.add_argument('--batched-context', type=int, default=0)
 a=p.parse_args()
 labels=['A','B','C']; token_ids=[11,12,13]
-print(json.dumps({'type':'hello','protocol_version':2,
+print(json.dumps({'type':'hello','protocol_version':3,
  'model_id':'local-gemma-riderless-v1','model_name':'fixture',
  'model_sha256':a.model_sha256,'runtime_sha256':a.runtime_sha256,
  'labels':labels,'label_token_ids':token_ids,'context_size':a.context,
  'batch_size':a.batch,'ubatch_size':a.ubatch,'threads':a.threads,
- 'max_questions':a.max_questions,'generated_tokens':0,
+ 'max_questions':a.max_questions,
+ 'batched_mode':a.batched,
+ 'batched_context':a.batched_context if a.batched else 0,
+ 'generated_tokens':0,
  'callbacks_enabled':False,'execution_mode':'full'}), flush=True)
 print('fixture native diagnostic', file=sys.stderr, flush=True)
 for line in sys.stdin:
@@ -65,6 +70,8 @@ for line in sys.stdin:
    'reason':'control_tokens'}), flush=True); continue
  if 'MODE_OVERSIZE' in __file__: print('x' * 5000, flush=True); continue
  rows=[]
+ mode='batched' if a.batched else 'sequential'
+ siblings=len(request['questions']) if a.batched else 1
  for i,q in enumerate(request['questions']):
   count=len(q['labels'])
   rows.append({'id':q['id'],'label_logits':[float(x) for x in range(count)],
@@ -73,10 +80,12 @@ for line in sys.stdin:
    'prompt_sha256':hashlib.sha256(q['messages'][0]['content'].encode()).hexdigest(),
    'prompt_tokens':10+i,'processed_tokens':10+i,'reused_tokens':0,
    'cache_cleared':True,
+   'evaluation_mode':mode,'batch_sequences':siblings,
    'timing_ms':1.0})
  print(json.dumps({'type':'result','id':request['id'],
   'model_sha256':a.model_sha256,'runtime_sha256':a.runtime_sha256,
   'generated_tokens':0,'callbacks_enabled':False,'execution_mode':'full',
+  'batched_fallback':None,
   'questions':rows}), flush=True)
 """
     )
@@ -194,6 +203,61 @@ async def test_protocol_corruption_or_timeout_reaps_owned_child(
     assert owned_pid is not None
     with pytest.raises(ProcessLookupError):
         os.kill(owned_pid, 0)
+
+
+@pytest.mark.asyncio
+async def test_batched_opt_in_reaches_the_child_and_is_held_to_the_handshake(
+    tmp_path: Path,
+) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+        batched=True,
+        batched_context=4096,
+    )
+
+    profile = await backend.start()
+    result = await backend.evaluate(_batch(profile), timeout=2.0)
+    await backend.close()
+
+    assert (profile.batched_mode, profile.batched_context) == (True, 4096)
+    assert result.questions[0].evaluation_mode == "batched"
+    assert result.batched_fallback is None
+
+    # The child is started without the flag, so its handshake disagrees.
+    mismatched = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+    mismatched.batched = True
+    with pytest.raises(BackendUnavailableError):
+        await mismatched.start()
+
+
+@pytest.mark.asyncio
+async def test_sequential_default_never_asks_the_child_for_batched_work(
+    tmp_path: Path,
+) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    profile = await backend.start()
+    result = await backend.evaluate(_batch(profile), timeout=2.0)
+    await backend.close()
+
+    assert (profile.batched_mode, profile.batched_context) == (False, 0)
+    assert result.questions[0].evaluation_mode == "sequential"
+    assert result.questions[0].batch_sequences == 1
 
 
 @pytest.mark.asyncio

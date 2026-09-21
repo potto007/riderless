@@ -144,6 +144,10 @@
   },
   "components": {
     "schemas": {
+      "BatchedFallback": {
+        "type": "string",
+        "const": "context"
+      },
       "ChoiceAnswer": {
         "properties": {
           "type": {
@@ -288,6 +292,16 @@
           "usage": {
             "$ref": "#/components/schemas/Usage"
           },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "diagnostics": {
             "anyOf": [
               {
@@ -332,6 +346,37 @@
           {
             "type": "null"
           }
+        ]
+      },
+      "Evaluation": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/EvaluationMode"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchedFallback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "Evaluation",
+        "description": "How the request was evaluated. Present only on a batched worker.\n\nA batched worker can answer a request sequentially (the ADR 0004 fallback),\nand that is a different numeric regime, so it is reported in the public body\nand not only under `?diagnostics=true`."
+      },
+      "EvaluationMode": {
+        "type": "string",
+        "enum": [
+          "sequential",
+          "batched"
         ]
       },
       "FullVocabularyArgmax": {
@@ -557,6 +602,15 @@
             "minimum": 0.0,
             "title": "Reused Tokens"
           },
+          "evaluation_mode": {
+            "$ref": "#/components/schemas/EvaluationMode"
+          },
+          "batch_sequences": {
+            "type": "integer",
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Batch Sequences"
+          },
           "timing_ms": {
             "type": "number",
             "minimum": 0.0,
@@ -601,6 +655,8 @@
           "prompt_tokens",
           "processed_tokens",
           "reused_tokens",
+          "evaluation_mode",
+          "batch_sequences",
           "timing_ms",
           "model_sha256",
           "runtime_sha256",

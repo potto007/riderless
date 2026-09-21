@@ -10,6 +10,7 @@ from riderless.api.schema import (
     BackendProfile,
     ChoiceAnswer,
     DecisionResponse,
+    Evaluation,
     NoulAnswer,
     QuestionDiagnostics,
     ScoreAnswer,
@@ -51,6 +52,22 @@ def map_response(
         raise ValueError("worker violated the non-generation contract")
     if worker.execution_mode != "full":
         raise ValueError("worker did not use full-only execution")
+    batched = {question.evaluation_mode == "batched" for question in worker.questions}
+    if not profile.batched_mode and (batched != {False} or worker.batched_fallback):
+        raise ValueError("a sequential worker reported batched evaluation")
+    if profile.batched_mode and worker.batched_fallback is None and batched != {True}:
+        raise ValueError("a batched worker answered sequentially without a reason")
+    # A sequential worker has one regime and says so in the handshake. A batched
+    # worker can take either, so every one of its responses names the regime it
+    # used and the reason it declined to batch.
+    evaluation = (
+        Evaluation(
+            mode="batched" if batched == {True} else "sequential",
+            fallback=worker.batched_fallback,
+        )
+        if profile.batched_mode
+        else None
+    )
 
     answers: dict[str, Answer] = {}
     diagnostics: dict[str, QuestionDiagnostics] = {}
@@ -102,6 +119,8 @@ def map_response(
                 prompt_tokens=raw.prompt_tokens,
                 processed_tokens=raw.processed_tokens,
                 reused_tokens=raw.reused_tokens,
+                evaluation_mode=raw.evaluation_mode,
+                batch_sequences=raw.batch_sequences,
                 timing_ms=raw.timing_ms,
                 model_sha256=worker.model_sha256,
                 runtime_sha256=worker.runtime_sha256,
@@ -115,5 +134,6 @@ def map_response(
         model=profile.model_id,
         answers=answers,
         usage=Usage(input_tokens=total_tokens),
+        evaluation=evaluation,
         diagnostics=diagnostics if include_diagnostics else None,
     )
