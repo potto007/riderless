@@ -10,11 +10,14 @@ deployment only and claims no parity with any hosted service.
 
 ## Build the native worker
 
-The build is create-only and verifies the frozen runtime before compiling:
+The build is create-only and verifies the base runtime before compiling:
 
 ```bash
-# 1. Produce the pinned llama.cpp base runtime (headers + shared libraries).
-python scripts/riderless/build_base_runtime.py --out build/llama-base --cuda
+# 1. Produce the llama.cpp base runtime (headers + shared libraries). The
+#    default revision is the tested release v0.4.1; --revision takes any other
+#    tag or commit. --cuda-architectures keeps a CUDA build to your own GPU.
+python scripts/riderless/build_base_runtime.py \
+  --out build/llama-base --cuda --cuda-architectures 120
 
 # 2. Compile the worker against it.
 python -m riderless.api.native.build \
@@ -23,10 +26,16 @@ python -m riderless.api.native.build \
 ```
 
 The result is `build/api-worker/build/riderless-worker`. Its sibling
-`build.json` records the worker source, executable, frozen helper, linked
-runtime, and llama.cpp revision hashes. Startup enforces the executable, runtime
-files, runtime bundle, and revision; the source and helper hashes are a build
-record and are not rechecked at startup. The model is pinned separately by
+`build.json` records the worker source, executable, bundled sha256 helper,
+linked runtime, and llama.cpp revision hashes. Startup enforces the executable,
+runtime files, and runtime bundle hashes; the source and helper hashes are a
+build record and are not rechecked at startup.
+
+The llama.cpp revision is provenance, not a gate. Every hash above is enforced
+whatever the revision, and a revision other than the tested one only logs a
+warning that the published measurements were taken on the tested revision and
+may not reproduce. `GET /v1/models` reports it as `runtime.llama_revision` and
+`runtime.tested_revision`. The model is pinned separately by
 `ApiConfig.model_sha256` (CLI `--model-sha256`): set it to your GGUF's sha256
 and startup refuses any other file. Building and running the CPU helper test
 does not load the model or start GPU work.

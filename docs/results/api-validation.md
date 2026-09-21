@@ -19,9 +19,15 @@ failure paths are driven by
 
 Runtime configuration for every run below: context 2048, batch 256, ubatch 256,
 8 threads, all 31 layers offloaded to the GPU, causal attention, CUDA fusion and
-graphs on, callbacks off. llama.cpp revision
-`afeebe103bd99cda8f5dfaefcabadf890db7fda7`. The model file is hashed at startup
-and refused if it differs from the configured pin.
+graphs on, callbacks off. The model file is hashed at startup and refused if it
+differs from the configured pin.
+
+**Every number on this page was measured on llama.cpp revision
+`afeebe103bd99cda8f5dfaefcabadf890db7fda7`**, which was this project's pinned
+revision at the time. The tested revision is now release `v0.4.1`. The same
+harness was re-run on v0.4.1 and the two runs are compared in
+[llama-v0.4.1-revalidation.md](llama-v0.4.1-revalidation.md); the tables below
+are left as measured rather than reattributed.
 
 Limits reported by the live `GET /v1/models`: 26 backend Choice options
 (validated single-token labels A to Z; the wire protocol accepts up to 255 and

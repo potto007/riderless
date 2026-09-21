@@ -6,6 +6,12 @@ isolation, and failure-path evidence for the API itself is in
 [api-validation.md](api-validation.md); the suites themselves are described in
 [../usecase-suites.md](../usecase-suites.md).
 
+**Every number on this page was measured on llama.cpp revision
+`afeebe103bd99cda8f5dfaefcabadf890db7fda7`.** The tested revision is now release
+`v0.4.1`; the suites were re-run on it and the two runs are compared in
+[llama-v0.4.1-revalidation.md](llama-v0.4.1-revalidation.md). The tables below
+are left as they were measured.
+
 ## Method
 
 - Families were derived from a survey of the documented patterns. Flat intent
