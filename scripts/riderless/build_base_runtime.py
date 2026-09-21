@@ -1,14 +1,20 @@
-"""Produce the pinned llama.cpp base runtime the API worker links against.
+"""Produce the llama.cpp base runtime the API worker links against.
 
 The worker in `riderless/api/native` is deliberately not built against whatever
-llama.cpp happens to be installed. It links one frozen revision, and both the
+llama.cpp happens to be installed. It links one recorded revision, and both the
 build manifest and the API startup check verify that the shared libraries on
 disk still hash to what the manifest recorded. This script creates that base.
+
+The default is the release this project is tested against, `TESTED_LLAMA_TAG`.
+`--revision` builds any other tag or commit instead: the hash checks are the
+same, only the published measurements stop applying, which the build says out
+loud. Fetching the tested tag also checks that it still resolves to the
+recorded commit, so a moved tag is a build failure rather than a silent swap.
 
 The output directory is the `--base` argument of `riderless.api.native.build`
 and contains exactly three things:
 
-    <out>/headers/          pristine source snapshot of the frozen revision
+    <out>/headers/          pristine source snapshot of the built revision
     <out>/runtime/bin/      the shared libraries built from that snapshot
     <out>/build.json        revision plus a sha256 for every library
 
@@ -17,11 +23,13 @@ from its own repository at build time.
 
 Example:
 
-    python scripts/riderless/build_base_runtime.py --out build/llama-base --cuda
+    python scripts/riderless/build_base_runtime.py --out build/llama-base \\
+        --cuda --cuda-architectures 120
 
 The compile is capped at four parallel jobs. Raising it on a small machine is
 how an unattended build turns into an out-of-memory crash, so `--jobs` refuses
-anything higher.
+anything higher. A CUDA build compiles every kernel once per architecture, so
+naming only the architectures you own is the other half of that cap.
 """
 
 from __future__ import annotations
@@ -30,16 +38,21 @@ import argparse
 import hashlib
 import io
 import json
+import logging
 import shutil
 import subprocess
 import tarfile
 from pathlib import Path
 from typing import Any
 
-# The one revision this project builds against lives with the worker build, so
-# the base runtime and the startup check can never drift apart. Changing it
-# invalidates every recorded runtime hash: it is a version bump, not a knob.
-from riderless.api.native.build import FROZEN_LLAMA_REVISION
+# The tested revision lives with the worker build, so the base runtime and the
+# startup check can never disagree about which revision that is.
+from riderless.api.native.build import (
+    TESTED_LLAMA_REVISION,
+    TESTED_LLAMA_TAG,
+    is_tested_revision,
+    sha256_helper,
+)
 
 UPSTREAM_REPOSITORY = "https://github.com/ggml-org/llama.cpp.git"
 MAX_JOBS = 4
@@ -59,8 +72,8 @@ def run(command: list[str]) -> None:
     subprocess.run(command, check=True)
 
 
-def fetch_revision(destination: Path, repository: str) -> Path:
-    """Fetch exactly the frozen commit into a throwaway checkout."""
+def fetch_revision(destination: Path, repository: str, revision: str) -> str:
+    """Fetch exactly one revision into a throwaway checkout; name it locally."""
     destination.mkdir(parents=True)
     run(["git", "-C", str(destination), "init", "--quiet"])
     run(["git", "-C", str(destination), "remote", "add", "origin", repository])
@@ -74,42 +87,72 @@ def fetch_revision(destination: Path, repository: str) -> Path:
             "--depth",
             "1",
             "origin",
-            FROZEN_LLAMA_REVISION,
+            revision,
         ]
     )
-    return destination
+    # A refspec-less fetch writes FETCH_HEAD and no local branch or tag.
+    return "FETCH_HEAD"
 
 
-def verify_revision(source: Path) -> None:
+def verify_revision(source: Path, revision: str) -> str:
     kind = subprocess.run(
-        ["git", "-C", str(source), "cat-file", "-t", FROZEN_LLAMA_REVISION],
+        ["git", "-C", str(source), "cat-file", "-t", revision],
         capture_output=True,
         text=True,
         check=False,
     )
-    if kind.returncode != 0 or kind.stdout.strip() != "commit":
+    if kind.returncode != 0 or kind.stdout.strip() not in {"commit", "tag"}:
         raise ValueError(
-            f"{source} does not contain the frozen revision "
-            f"{FROZEN_LLAMA_REVISION}; fetch it or drop --llama-source"
+            f"{source} does not contain revision {revision}; "
+            "fetch it or drop --llama-source"
         )
+    return revision
 
 
-def export_headers(source: Path, headers: Path) -> None:
-    """Extract the commit's tree, not the working copy, so it cannot be dirty."""
-    archive = subprocess.check_output(
-        ["git", "-C", str(source), "archive", FROZEN_LLAMA_REVISION]
+def resolve_commit(source: Path, name: str) -> str:
+    """The commit `name` points at, peeling an annotated tag on the way."""
+    resolved = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "--verify", f"{name}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    commit = resolved.stdout.strip()
+    if resolved.returncode != 0 or len(commit) != 40:
+        raise ValueError(f"Could not resolve {name} to a commit in {source}")
+    return commit
+
+
+def check_tested_ref(revision: str, commit: str) -> bool:
+    """Refuse a tested ref that moved; warn for anything else untested."""
+    if revision not in {TESTED_LLAMA_TAG, TESTED_LLAMA_REVISION}:
+        return is_tested_revision(commit)
+    if commit != TESTED_LLAMA_REVISION:
+        raise ValueError(
+            f"{revision} resolves to {commit}, not the recorded tested commit "
+            f"{TESTED_LLAMA_REVISION}; upstream moved the tag"
+        )
+    return True
+
+
+def export_headers(source: Path, name: str, headers: Path) -> None:
+    """Extract the commit's tree, not the working copy, so it cannot be dirty."""
+    archive = subprocess.check_output(["git", "-C", str(source), "archive", name])
     headers.mkdir(parents=True)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(headers, filter="data")
     if not (headers / "include" / "llama.h").is_file():
         raise ValueError("Exported snapshot is missing include/llama.h")
-    sha_helper = headers / "examples/gguf-hash/deps/sha256/sha256.c"
-    if not sha_helper.is_file():
-        raise ValueError("Exported snapshot is missing the gguf-hash sha256 helper")
+    sha256_helper(headers)
 
 
-def configure(headers: Path, runtime: Path, *, cuda: bool) -> list[str]:
+def configure(
+    headers: Path,
+    runtime: Path,
+    *,
+    cuda: bool,
+    cuda_architectures: str | None,
+) -> list[str]:
     options = [
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_SHARED_LIBS=ON",
@@ -122,6 +165,8 @@ def configure(headers: Path, runtime: Path, *, cuda: bool) -> list[str]:
         "-DLLAMA_BUILD_UI=OFF",
         f"-DGGML_CUDA={'ON' if cuda else 'OFF'}",
     ]
+    if cuda_architectures is not None:
+        options.append(f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}")
     run(["cmake", "-S", str(headers), "-B", str(runtime), *options])
     return options
 
@@ -151,9 +196,11 @@ def inventory(libraries: Path, *, cuda: bool) -> dict[str, str]:
 def build(
     out: Path,
     *,
+    revision: str,
     llama_source: Path | None,
     repository: str,
     cuda: bool,
+    cuda_architectures: str | None,
     jobs: int,
     keep_checkout: bool,
 ) -> dict[str, Any]:
@@ -164,16 +211,21 @@ def build(
     out.mkdir(parents=True)
     checkout: Path | None = None
     if llama_source is None:
-        checkout = fetch_revision(out / "llama.cpp-checkout", repository)
+        checkout = out / "llama.cpp-checkout"
         source = checkout
+        name = fetch_revision(checkout, repository, revision)
     else:
         source = llama_source.resolve()
-        verify_revision(source)
+        name = verify_revision(source, revision)
+    commit = resolve_commit(source, name)
+    tested = check_tested_ref(revision, commit)
 
     headers = out / "headers"
     runtime = out / "runtime"
-    export_headers(source, headers)
-    options = configure(headers, runtime, cuda=cuda)
+    export_headers(source, name, headers)
+    options = configure(
+        headers, runtime, cuda=cuda, cuda_architectures=cuda_architectures
+    )
     compile_libraries(runtime, cuda=cuda, jobs=jobs)
 
     libraries = runtime / "bin"
@@ -186,11 +238,17 @@ def build(
 
     manifest: dict[str, Any] = {
         "schema_version": 1,
-        "llama_revision": FROZEN_LLAMA_REVISION,
+        # What was asked for, and what it actually resolved to.
+        "llama_ref": revision,
+        "llama_revision": commit,
+        "tested_llama_tag": TESTED_LLAMA_TAG,
+        "tested_llama_revision": TESTED_LLAMA_REVISION,
+        "tested_revision": tested,
         "llama_repository": repository if llama_source is None else str(source),
         "runtime_dir": str(libraries),
         "runtime_sha256": checksums,
         "cuda": cuda,
+        "cuda_architectures": cuda_architectures,
         # Kept for readers that expect the older field name.
         "cpu_only": not cuda,
         "cmake_options": options,
@@ -200,6 +258,7 @@ def build(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -211,17 +270,33 @@ def main() -> None:
         help="new directory to create; becomes --base of the worker build",
     )
     parser.add_argument(
+        "--revision",
+        default=TESTED_LLAMA_TAG,
+        help=f"llama.cpp tag or commit to build; default {TESTED_LLAMA_TAG}, the "
+        "release this project is tested against. Any other value builds and "
+        "verifies the same way but is reported as untested",
+    )
+    parser.add_argument(
         "--llama-source",
         type=Path,
         default=None,
-        help="existing llama.cpp clone containing the frozen revision; "
-        "omitted means fetch that one commit from --repository",
+        help="existing llama.cpp clone containing --revision; "
+        "omitted means fetch that one revision from --repository",
     )
     parser.add_argument("--repository", default=UPSTREAM_REPOSITORY)
     parser.add_argument(
         "--cuda",
         action="store_true",
         help="build the CUDA backend as well; needs a CUDA toolkit",
+    )
+    parser.add_argument(
+        "--cuda-architectures",
+        default=None,
+        help="value for CMAKE_CUDA_ARCHITECTURES, for example 120 for an "
+        "RTX 5090. Omitted leaves llama.cpp's own default, which is the "
+        "locally detected architecture with GGML_NATIVE and otherwise a broad "
+        "set covering every commonly used GPU. Naming only the architectures "
+        "you own is what keeps a CUDA build's memory and time bounded",
     )
     parser.add_argument(
         "--jobs",
@@ -238,9 +313,11 @@ def main() -> None:
     try:
         manifest = build(
             args.out.resolve(),
+            revision=args.revision,
             llama_source=args.llama_source,
             repository=args.repository,
             cuda=args.cuda,
+            cuda_architectures=args.cuda_architectures,
             jobs=args.jobs,
             keep_checkout=args.keep_checkout,
         )

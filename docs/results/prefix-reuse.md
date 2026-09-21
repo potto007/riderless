@@ -3,6 +3,11 @@
 Run on 2026-09-21, one RTX 5090, Gemma 4 26B-A4B UD-Q4_K_XL. Decision record:
 [0002](../decisions/0002-share-state-prefix-within-a-request.md).
 
+**Every number on this page was measured on llama.cpp revision
+`afeebe103bd99cda8f5dfaefcabadf890db7fda7`.** The tested revision is now
+release `v0.4.1`; see
+[llama-v0.4.1-revalidation.md](llama-v0.4.1-revalidation.md).
+
 ## What changed
 
 Every question of a request starts with the same text: the system instruction

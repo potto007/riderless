@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from riderless.api.compiler import PROMPT_VERSION, compile_request
 from riderless.api.mapping import map_response, stable_softmax
+from riderless.api.native.build import TESTED_LLAMA_REVISION
 from riderless.api.schema import (
     BackendProfile,
     DecisionRequest,
@@ -21,6 +22,8 @@ PROFILE = BackendProfile(
     model_name="fixture",
     model_sha256="a" * 64,
     runtime_sha256="b" * 64,
+    llama_revision=TESTED_LLAMA_REVISION,
+    tested_revision=True,
     labels=["A", "B", "C", "D"],
     label_token_ids=[101, 102, 103, 104],
     context_size=2048,

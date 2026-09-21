@@ -289,6 +289,10 @@ def create_app(
                         "threads": profile.threads,
                         "generated_tokens": profile.generated_tokens,
                         "callbacks_enabled": profile.callbacks_enabled,
+                        # False means this build links a llama.cpp revision
+                        # other than the one the published numbers came from.
+                        "llama_revision": profile.llama_revision,
+                        "tested_revision": profile.tested_revision,
                     },
                 }
             ]

@@ -18,7 +18,9 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      # v10 is the current major. setup-uv publishes no floating major tag, so
+      # this is pinned to the release; v6 ran on the deprecated Node 20.
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
       # GitHub-hosted runners have no GPU and no model file. Every check

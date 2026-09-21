@@ -3,10 +3,23 @@ project(riderless_worker LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(LLAMA_SOURCE "" CACHE PATH "Frozen llama.cpp source snapshot")
-set(LLAMA_BUILD "" CACHE PATH "Matching frozen llama.cpp build")
+set(LLAMA_SOURCE "" CACHE PATH "llama.cpp source snapshot of the base runtime")
+set(LLAMA_BUILD "" CACHE PATH "Matching llama.cpp build")
 if(NOT EXISTS "${LLAMA_SOURCE}/include/llama.h")
-    message(FATAL_ERROR "Set LLAMA_SOURCE and LLAMA_BUILD to the frozen runtime")
+    message(FATAL_ERROR "Set LLAMA_SOURCE and LLAMA_BUILD to the base runtime")
+endif()
+
+# The bundled sha256 helper moved out of the gguf-hash example and into vendor
+# in llama.cpp v0.4.1. The file is unchanged, so either layout links the same.
+set(SHA256_ROOT "")
+foreach(candidate "vendor/hash" "examples/gguf-hash/deps")
+    if(EXISTS "${LLAMA_SOURCE}/${candidate}/sha256/sha256.c")
+        set(SHA256_ROOT "${LLAMA_SOURCE}/${candidate}")
+        break()
+    endif()
+endforeach()
+if(SHA256_ROOT STREQUAL "")
+    message(FATAL_ERROR "No bundled sha256 helper under ${LLAMA_SOURCE}")
 endif()
 
 set(LLAMA_LIB "${LLAMA_BUILD}/bin")
@@ -16,14 +29,14 @@ endforeach()
 
 add_executable(riderless-worker
     worker.cpp
-    "${LLAMA_SOURCE}/examples/gguf-hash/deps/sha256/sha256.c")
+    "${SHA256_ROOT}/sha256/sha256.c")
 target_include_directories(riderless-worker SYSTEM PRIVATE
     "${LLAMA_SOURCE}/include"
     "${LLAMA_SOURCE}/src"
     "${LLAMA_SOURCE}/ggml/include"
     "${LLAMA_SOURCE}/common"
     "${LLAMA_SOURCE}/vendor"
-    "${LLAMA_SOURCE}/examples/gguf-hash/deps")
+    "${SHA256_ROOT}")
 target_link_libraries(riderless-worker PRIVATE
     ${LIB_llama-common} ${LIB_llama} ${LIB_ggml} ${LIB_ggml-base})
 target_compile_definitions(riderless-worker PRIVATE

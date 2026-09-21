@@ -15,6 +15,7 @@ import pytest
 from riderless.api.app import ApiConfig, create_app
 from riderless.api.backend import BackendRequestError
 from riderless.api.compiler import CompiledBatch
+from riderless.api.native.build import TESTED_LLAMA_REVISION
 from riderless.api.schema import BackendProfile, WorkerBatchResult
 
 PROFILE = BackendProfile(
@@ -22,6 +23,8 @@ PROFILE = BackendProfile(
     model_name="fixture",
     model_sha256="a" * 64,
     runtime_sha256="b" * 64,
+    llama_revision=TESTED_LLAMA_REVISION,
+    tested_revision=True,
     labels=["A", "B", "C"],
     label_token_ids=[11, 12, 13],
     context_size=2048,

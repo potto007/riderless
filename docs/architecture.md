@@ -1,8 +1,9 @@
 # Architecture
 
 How a request becomes a set of label probabilities, and what keeps that process
-auditable. Decisions behind it: [0001](decisions/0001-full-depth-label-readout-in-an-owned-child.md)
-and [0002](decisions/0002-share-state-prefix-within-a-request.md).
+auditable. Decisions behind it: [0001](decisions/0001-full-depth-label-readout-in-an-owned-child.md),
+[0002](decisions/0002-share-state-prefix-within-a-request.md) and
+[0003](decisions/0003-tested-default-revision-instead-of-a-hard-pin.md).
 
 ## Process model
 
@@ -192,14 +193,15 @@ reaps the child.
 The worker is built by `python -m riderless.api.native.build`, which is
 create-only: it refuses an output directory that already exists, so a build can
 never be silently overwritten. Before compiling it validates the base runtime:
-the llama.cpp revision must equal the pinned one, the headers and shared
+the base manifest must name a llama.cpp revision, the headers and shared
 libraries must be present, and every library must hash to the value recorded in
 the base manifest. It then compiles, and runs the CPU unit test for the worker
 helpers, which loads no model and does no GPU work.
 
 The resulting `build.json` records:
 
-- the pinned llama.cpp revision and the base build it linked against,
+- the llama.cpp revision the base was built from, the ref that was asked for,
+  whether that is the tested revision, and the base build it linked against,
 - every runtime library hash plus a single bundle hash over all of them,
 - the source hashes of the worker sources and of the SHA-256 helper that the
   build compiles out of your llama.cpp checkout (no llama.cpp file is vendored
@@ -212,8 +214,8 @@ The resulting `build.json` records:
   `execution_mode: "full"`.
 
 At startup the backend rechecks the executable path and hash, every runtime file
-hash, the bundle hash, the revision, and those three invariants, and refuses to
-start on any mismatch. The invariants are checked against the handshake the
+hash, the bundle hash, and those three invariants, and refuses to start on any
+mismatch. The invariants are checked against the handshake the
 worker reports for the flags the backend actually passed, not against the
 manifest's recorded `runtime_config`: starting with `--context 4096` leaves the
 manifest saying 2048 and raises no mismatch. The source and helper hashes are a
@@ -227,3 +229,26 @@ default) the backend accepts whatever `model_path` points at.
 Both hashes travel through the handshake into every response's diagnostics, so
 an archived answer says exactly which executable, which runtime bundle, and
 which model file produced it.
+
+### Which llama.cpp, and why it is not a gate
+
+The recorded revision is provenance, not integrity. Every hash above is checked
+whatever the revision turns out to be, so a build from another llama.cpp is
+verified exactly as strictly as the tested one. What the revision buys is the
+ability to say which llama.cpp produced a published number.
+
+The project is tested against one release, recorded in
+`riderless/api/native/build.py` as both a tag and the commit that tag resolved
+to. `build_base_runtime.py` fetches that tag by default; `--revision` builds any
+other tag or commit. Asking for the tested tag is checked against the recorded
+commit, so a tag that upstream moves fails the build instead of silently
+substituting a different tree. Building anything else logs one warning: the
+measurements in `docs/results/` were taken on the tested revision and may not
+reproduce. It is never a refusal. `GET /v1/models` reports the live values as
+`runtime.llama_revision` and `runtime.tested_revision`.
+
+Answers really can move between revisions, because upstream kernels change. See
+[results/llama-v0.4.1-revalidation.md](results/llama-v0.4.1-revalidation.md) for
+the measured size of that effect, and
+[0003](decisions/0003-tested-default-revision-instead-of-a-hard-pin.md) for why
+a hard pin was the wrong instrument.

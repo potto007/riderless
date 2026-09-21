@@ -112,11 +112,14 @@ for why, and for the cost of the alternative.
   (roughly 16 GiB of weights plus KV and compute buffers), so budget that much
   free VRAM. In the measured run the whole card peaked at 22.5 GiB, but that
   figure includes a 4.83 GiB pre-load baseline from unrelated processes.
-- A llama.cpp build at the pinned revision
-  `afeebe103bd99cda8f5dfaefcabadf890db7fda7`. Nothing from llama.cpp is
+- A llama.cpp build. This project is tested against release `v0.4.1` (commit
+  `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`), which the base-runtime script
+  fetches by default. Other revisions work if the common library API still
+  matches, and are built and hash-verified identically; results may differ,
+  and the build and the service each say so once. Nothing from llama.cpp is
   vendored here; you build it yourself.
-- Python 3.12 or newer, Git (the base-runtime script fetches the pinned
-  revision), CMake, and a C++ toolchain.
+- Python 3.12 or newer, Git (the base-runtime script fetches the revision),
+  CMake, and a C++ toolchain.
 - The Gemma 4 26B-A4B instruction-tuned GGUF. Weights are not included in this
   repository and are not redistributed here; download them yourself under their
   own licence terms.
@@ -129,13 +132,17 @@ for why, and for the cost of the alternative.
 #    prefix below, activating that virtualenv instead.
 uv sync
 
-# 1. Build the pinned llama.cpp base runtime (headers, shared libraries, and a
-#    build.json that records the revision and per-file hashes). Drop --cuda for a
-#    CPU-only runtime; with it you need a CUDA toolkit on the machine.
+# 1. Build the llama.cpp base runtime (headers, shared libraries, and a
+#    build.json that records the revision and per-file hashes). Defaults to the
+#    tested release, v0.4.1; --revision <tag-or-sha> builds another one. Drop
+#    --cuda for a CPU-only runtime; with it you need a CUDA toolkit. On a small
+#    machine also pass --cuda-architectures with your own GPU's compute
+#    capability (120 for an RTX 5090): building every architecture costs time
+#    and memory you do not need to spend.
 uv run python scripts/riderless/build_base_runtime.py \
-  --out build/llama-base --cuda
+  --out build/llama-base --cuda --cuda-architectures 120
 
-# 2. Build the worker against that frozen runtime. The output directory must not
+# 2. Build the worker against that base runtime. The output directory must not
 #    already exist; the build records every input hash in build.json and runs its
 #    CPU unit test. No model is loaded and no GPU work happens here.
 uv run python -m riderless.api.native.build \
@@ -241,6 +248,11 @@ id `local-gemma-systemone-v1` and the worker binary name that went with it; the
 rename changed identifiers only, and the compiled prompt text is byte-identical
 across it.
 
+Those runs were also measured on llama.cpp revision `afeebe1`, which was the
+pinned revision at the time. The tested revision is now release `v0.4.1`. Each
+results page says which revision produced its numbers, and the re-validation on
+v0.4.1 is reported separately rather than written over them.
+
 - Conformance and isolation: 36 of 36 hand-authored smoke answers, 0 generated
   tokens on every request, 72 isolation comparisons at exactly 0.0 delta, and a
   negative-control worker with the context clear removed fails the same harness.
@@ -259,10 +271,14 @@ across it.
   every answer, probability, and raw logit identical, and its cost is below the
   noise floor of the measurement.
   [docs/results/worker-build-comparison.md](docs/results/worker-build-comparison.md)
+- Re-validation on llama.cpp v0.4.1: the same harness and the same suites run
+  against the current tested revision, compared question by question with the
+  `afeebe1` numbers above.
+  [docs/results/llama-v0.4.1-revalidation.md](docs/results/llama-v0.4.1-revalidation.md)
 
 Further reading: [docs/architecture.md](docs/architecture.md) for the process
 model and protocol, [docs/usecase-suites.md](docs/usecase-suites.md) for the
-suites and how to run them, and [docs/decisions/](docs/decisions/) for the two
+suites and how to run them, and [docs/decisions/](docs/decisions/) for the three
 decision records that shape v1.
 
 ## Licence and attribution
@@ -274,6 +290,6 @@ interface so that callers can reuse a familiar payload. This project is
 independent, and is not affiliated with, endorsed by, or certified by TypeSafe.
 No parity with any hosted service is claimed or measured here.
 
-llama.cpp is MIT licensed and is built by you at the pinned revision; no
+llama.cpp is MIT licensed and is built by you; no
 llama.cpp source is vendored in this repository. Model weights are not included:
 you download Gemma 4 yourself and use it under its own terms.

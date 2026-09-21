@@ -170,7 +170,12 @@ std::string render_prompt(
         const common_chat_templates * templates,
         const std::string & answer_prefix) {
     common_chat_templates_inputs inputs;
-    inputs.messages = common_chat_msgs_parse_oaicompat(messages);
+    // llama.cpp v0.4.1 moved the common library off nlohmann and onto its own
+    // common_json. The protocol stays nlohmann, so the already-validated message
+    // array is handed over verbatim through its serialization: the template sees
+    // exactly the messages it saw before.
+    inputs.messages = common_chat_msgs_parse_oaicompat(
+        common_json::parse(messages.dump()));
     inputs.enable_thinking = false;
     inputs.chat_template_kwargs["enable_thinking"] = "false";
     inputs.now = std::chrono::system_clock::time_point{};

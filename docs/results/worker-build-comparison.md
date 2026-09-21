@@ -12,6 +12,11 @@ run-to-run noise for the sample sizes involved.
 
 ## What changed
 
+Both builds were made from llama.cpp revision
+`afeebe103bd99cda8f5dfaefcabadf890db7fda7`, this project's pinned revision at
+the time; the tested revision is now release `v0.4.1`, and the comparison below
+is unaffected because it holds the revision fixed on both sides.
+
 Both builds share the same llama.cpp revision, the same runtime bundle, the same
 model, and the same runtime configuration (context 2048, batch and ubatch 256,
 8 threads, causal attention, `swa_full`, CUDA fusion and graphs on, callbacks
