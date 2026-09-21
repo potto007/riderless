@@ -2,8 +2,9 @@
 
 How a request becomes a set of label probabilities, and what keeps that process
 auditable. Decisions behind it: [0001](decisions/0001-full-depth-label-readout-in-an-owned-child.md),
-[0002](decisions/0002-share-state-prefix-within-a-request.md) and
-[0003](decisions/0003-tested-default-revision-instead-of-a-hard-pin.md).
+[0002](decisions/0002-share-state-prefix-within-a-request.md),
+[0003](decisions/0003-tested-default-revision-instead-of-a-hard-pin.md) and
+[0004](decisions/0004-optional-batched-question-evaluation.md).
 
 ## Process model
 
@@ -122,7 +123,16 @@ Determinism holds per configuration. Changing the prefill batch size or turning
 reuse on or off changes batch shapes, and about 1% of borderline questions move;
 see [results/prefix-reuse.md](results/prefix-reuse.md).
 
-## JSONL protocol, version 2
+Rules 3 and 4 describe the default sequential worker. The opt-in batched mode of
+[0004](decisions/0004-optional-batched-question-evaluation.md) gives up rule 3
+deliberately: it uses one request-wide split so all the questions can share one
+prefill, which makes a result depend on its siblings. Rules 1, 2, 5 and 6 hold
+there unchanged, and each question's tokens still carry only their own KV
+sequence id, so a question can never attend to a sibling's text. The harness
+measures both facts; see
+[results/batched-mode.md](results/batched-mode.md).
+
+## JSONL protocol, version 3
 
 One JSON object per line in each direction over the child's stdin and stdout.
 Every line is bounded at 4 MiB on both sides; a longer line is a protocol error
@@ -132,16 +142,19 @@ constant that the worker enforces.
 **Handshake.** The worker's first line is a `hello`:
 
 ```json
-{"type": "hello", "protocol_version": 2, "model_id": "local-gemma-riderless-v1",
+{"type": "hello", "protocol_version": 3, "model_id": "local-gemma-riderless-v1",
  "model_name": "...", "model_sha256": "...", "runtime_sha256": "...",
  "labels": ["A", "B", "..."], "label_token_ids": [1, 2],
  "context_size": 2048, "batch_size": 256, "ubatch_size": 256, "threads": 8,
- "max_questions": 32, "generated_tokens": 0, "callbacks_enabled": false,
+ "max_questions": 32, "batched_mode": false, "batched_context": 0,
+ "generated_tokens": 0, "callbacks_enabled": false,
  "execution_mode": "full"}
 ```
 
-The backend refuses to proceed unless the protocol version is 2 and every field
-matches what it asked for, including both hashes.
+The backend refuses to proceed unless the protocol version is 3 and every field
+matches what it asked for, including both hashes. `batched_mode` and
+`batched_context` are the worker's report of the mode it was started in; a
+sequential worker reports `false` and `0`.
 
 **Request.** One envelope per API request, carrying every compiled question:
 
@@ -162,14 +175,21 @@ just reuses less. Setting it to 0 disables reuse for that question.
 ```json
 {"type": "result", "id": "<correlation id>", "model_sha256": "...",
  "runtime_sha256": "...", "generated_tokens": 0, "callbacks_enabled": false,
- "execution_mode": "full",
+ "execution_mode": "full", "batched_fallback": null,
  "questions": [{"id": "route", "label_logits": [...], "label_token_ids": [...],
                 "allowed_label_mass": 0.99998,
                 "full_vocabulary_argmax": {"token_id": 235280, "logit": 21.5},
                 "prompt_sha256": "...", "prompt_tokens": 384,
                 "processed_tokens": 384, "reused_tokens": 0,
-                "cache_cleared": true, "timing_ms": 29.4}]}
+                "cache_cleared": true, "evaluation_mode": "sequential",
+                "batch_sequences": 1, "timing_ms": 29.4}]}
 ```
+
+`batched_fallback` is `"context"` only when a batched worker had to answer the
+request sequentially because it did not fit the batched cache, and `null`
+otherwise. Every question names the regime it was evaluated in and how many
+question sequences shared its decodes; the mapping layer rejects a result whose
+regime contradicts the handshake.
 
 **Preflight error.** A request the worker will not run at all:
 

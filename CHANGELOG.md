@@ -11,7 +11,39 @@ protocol can change without a deprecation period.
 
 ## Unreleased
 
+### Added
+
+- Opt-in batched question evaluation. `ApiConfig.batched` (CLI, runner and
+  worker `--batched`) gives every question of a request its own KV sequence over
+  one copy of the shared prefix and decodes all the remainders together.
+  `ApiConfig.batched_context` (worker `--batched-context`, default 8192 cells)
+  sizes the unified KV cache and may not exceed `max_questions * context_size`.
+  The default stays sequential and reproduces the recorded v0.4.1 suite run bit
+  for bit.
+- A batched worker names the regime that answered each request in the public
+  response body as `evaluation: {mode, fallback}`, and a request that needs more
+  KV cells than `batched_context` is answered by the sequential path with
+  `fallback: "context"` rather than being truncated or refused. Diagnostics gain
+  `evaluation_mode` and `batch_sequences` per question. `GET /v1/models` reports
+  `runtime.batched` and `runtime.batched_context`.
+- `scripts/riderless/compare_observations.py` and
+  `scripts/riderless/compare_fallback.py`, which reduce two recorded runs to
+  answer changes, probability and raw logit moves, tokens and latency.
+- [ADR 0004](docs/decisions/0004-optional-batched-question-evaluation.md) and
+  the [batched-mode results](docs/results/batched-mode.md).
+
 ### Changed
+
+- Worker protocol version 3. The handshake carries `batched_mode` and
+  `batched_context`, and a result carries `batched_fallback` plus the two new
+  per-question fields. The backend refuses a version 2 worker.
+- The validation harness stops asserting exact sibling independence in batched
+  mode and records the solo, reversed and renamed deltas instead. A repeat of an
+  identical request must still differ by exactly 0.0 in both modes. It also
+  gained a cross-question contamination probe, run in both question orders, that
+  fails the run if an adversarial sibling moves the target further than a
+  neutral sibling of the same length, and a request sized to force the
+  sequential fallback.
 
 - The llama.cpp revision is a tested default instead of a hard pin. The build
   records llama.cpp release `v0.4.1` (commit

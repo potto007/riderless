@@ -63,7 +63,8 @@ app = create_app(
 `ApiConfig` defaults are context 2048, batch and ubatch 256, 8 threads, at
 most 32 questions, a 1 MiB HTTP request, a 4 MiB worker response, a 120 second
 request timeout, and a 600 second startup timeout. `gpu` defaults to `False` and
-must be opted into explicitly.
+must be opted into explicitly. `batched` defaults to `False`; see "Batched
+evaluation" below.
 
 Run a loopback server with the same factory:
 
@@ -145,7 +146,8 @@ Use `?diagnostics=true` to add a top-level map keyed by question id. Each entry
 contains `raw_label_logits`, `token_mapping`, `coverage`,
 `full_vocabulary_argmax`, `conditional_score_semantics`, `confidence_formula`,
 `prompt_sha256`, `prompt_version`, `cache_cleared`, `prompt_tokens`,
-`processed_tokens`, `reused_tokens`, `timing_ms`, `model_sha256`, `runtime_sha256`, `execution_mode`,
+`processed_tokens`, `reused_tokens`, `evaluation_mode`, `batch_sequences`,
+`timing_ms`, `model_sha256`, `runtime_sha256`, `execution_mode`,
 `generated_tokens`, and `callbacks_enabled`.
 
 Native stderr is never copied into HTTP errors. Operators can enable the
@@ -205,8 +207,9 @@ chunks, so a question gets the same logits alone, reordered, or beside any
 siblings. Nothing is kept between requests. Diagnostics report the accounting
 per question: `processed_tokens + reused_tokens == prompt_tokens`, and
 `cache_cleared` is true exactly when nothing was reused. `usage.input_tokens`
-counts the tokens actually prefilled. Parallel GPU requests are outside v1. The
-service permits one
+counts the tokens actually prefilled.
+
+Parallel GPU requests are outside v1. The service permits one
 active inference request and immediately returns 429 while busy. Conditional
 label probabilities are finite and normalized, but they are not calibrated
 correctness probabilities. Choice and Score confidence is
@@ -222,3 +225,48 @@ malformed input (400), unknown model (404), timeout (408), oversized body
 (413), unsupported media (415), schema or model budget failures (422), busy
 (429), unavailable backend (529), and internal failure (500). A batch never
 returns a successful partial result.
+
+## Batched evaluation
+
+`ApiConfig.batched` (CLI and runner `--batched`) turns on the opt-in mode of
+[ADR 0004](../../docs/decisions/0004-optional-batched-question-evaluation.md).
+It is chosen when the worker starts, never per request, because it changes how
+the context is built. The worker then gives every question of a request its own
+KV sequence over one copy of the shared prefix and decodes all the remainders
+together. That removes about a third of the fixed per-question cost: measured
+over a 1,007-token state, each extra question costs about 27 ms sequentially and
+about 18 ms batched.
+
+It is not bit-identical to the default and cannot be: answers on this model move
+with the prefill batch shape, and batching several questions changes that shape
+by construction. A question's result then depends on how many siblings the
+request carries and how long they are. What a sibling *says* did not move it:
+each question's tokens carry only their own sequence id, so the attention mask
+drops every sibling cell, and the harness measures that with an adversarial
+sibling of identical length in both question orders (delta 0.0 in every probe so
+far, and the harness fails if an adversarial sibling moves the target further
+than a neutral one of the same length). Measurements and the recommendation are
+in [the batched-mode results](../../docs/results/batched-mode.md).
+
+`ApiConfig.batched_context` (default 8192) sizes the unified KV cache. Each cell
+costs about 0.21 MiB of KV on this model, so the default costs about 1.3 GiB
+more VRAM than the sequential context; the value may not exceed
+`max_questions * context_size`, the most any request could need. A request needs
+the shared prefix plus every question's remainder to fit; the per-question prompt
+limit is still the 2048-token context size. A request that does not fit is
+evaluated by the sequential path inside the same context instead, and the
+response says so. Nothing is truncated.
+
+A batched worker reports the regime it used in the body of every response, so a
+caller sees it without `?diagnostics=true`:
+
+```json
+{"evaluation": {"mode": "sequential", "fallback": "context"}}
+```
+
+`mode` is `batched` normally and `sequential` when the request did not fit;
+`fallback` is `context` only in that case and is otherwise absent. A sequential
+worker has one regime for its whole life and reports it in `GET /v1/models`
+instead, so its responses carry no `evaluation` field at all. Diagnostics add
+`evaluation_mode` and `batch_sequences` per question, and the mapping layer
+rejects a report that contradicts the handshake.

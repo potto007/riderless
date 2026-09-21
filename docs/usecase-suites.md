@@ -81,6 +81,14 @@ PYTHONPATH=. python scripts/riderless/run_usecase_suites.py \
 - `--batch-size` sets both batch and ubatch. `--no-share-prefix` restores the
   one-full-prefill-per-question behaviour. Both change the prefill batch shape,
   so hold them fixed when comparing two runs.
+- `--batched` turns on the opt-in batched mode of
+  [decisions/0004](decisions/0004-optional-batched-question-evaluation.md), and
+  `--batched-context` sizes its KV cache. It too changes the batch shape, so it
+  is a third configuration to hold fixed, not a free speedup. The run records
+  all four settings in `run.json`.
+- `scripts/riderless/compare_observations.py --left <a>/observations.jsonl
+  --right <b>/observations.jsonl` reduces two runs to answer changes, the
+  largest probability and raw logit moves, tokens, and latency.
 - One backend serves all 241 requests, with one model load.
 - The runner prints `SUITE_COMPLETE <slug>` after each suite and one terminal
   line: `USECASE_RUN_COMPLETE questions=... accuracy=... errored_cases=...` or

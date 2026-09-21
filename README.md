@@ -100,10 +100,14 @@ point is computed from the question's own prompt alone and the prefix is reused
 only on exact token equality, so a question is computed identically alone,
 reordered, or beside any siblings. Nothing is cached between requests.
 
-Questions are still evaluated one at a time; the request is not a single
-combined forward pass. See
+Questions are still evaluated one at a time by default; the request is not a
+single combined forward pass. See
 [docs/decisions/0002](docs/decisions/0002-share-state-prefix-within-a-request.md)
-for why, and for the cost of the alternative.
+for why, and for the cost of the alternative. An opt-in worker mode
+(`--batched`) does evaluate a request's questions in one batched decode, which
+is faster and gives up that sibling independence:
+[docs/decisions/0004](docs/decisions/0004-optional-batched-question-evaluation.md)
+and [docs/results/batched-mode.md](docs/results/batched-mode.md).
 
 ## Requirements
 
@@ -275,10 +279,13 @@ v0.4.1 is reported separately rather than written over them.
   against the current tested revision, compared question by question with the
   `afeebe1` numbers above.
   [docs/results/llama-v0.4.1-revalidation.md](docs/results/llama-v0.4.1-revalidation.md)
+- Opt-in batched evaluation: the same suites and harness with every question of
+  a request in one decode, against the sequential default on the same worker.
+  [docs/results/batched-mode.md](docs/results/batched-mode.md)
 
 Further reading: [docs/architecture.md](docs/architecture.md) for the process
 model and protocol, [docs/usecase-suites.md](docs/usecase-suites.md) for the
-suites and how to run them, and [docs/decisions/](docs/decisions/) for the three
+suites and how to run them, and [docs/decisions/](docs/decisions/) for the four
 decision records that shape v1.
 
 ## Licence and attribution
