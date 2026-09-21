@@ -1,4 +1,4 @@
-systemone-local
+riderless
 Copyright 2026 Paul Otto
 
 This product includes software developed by Paul Otto.
@@ -24,7 +24,7 @@ built, or downloaded by the user on their own machine, under their own terms.
 
 llama.cpp (MIT License)
     https://github.com/ggml-org/llama.cpp
-    The native worker in systemone/api/native is compiled against a llama.cpp
+    The native worker in riderless/api/native is compiled against a llama.cpp
     checkout that the user provides at a pinned revision. Its headers, its
     bundled nlohmann/json, and its examples/gguf-hash/deps/sha256 helper are
     read from that checkout at build time. No llama.cpp or ggml file is copied

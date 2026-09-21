@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Local System One API",
+    "title": "Riderless Decision API",
     "version": "1.0.0"
   },
   "paths": {
@@ -41,10 +41,10 @@
         }
       }
     },
-    "/v1/systemone": {
+    "/v1/decisions": {
       "post": {
-        "summary": "Systemone",
-        "operationId": "systemone_v1_systemone_post",
+        "summary": "Answer a batch of typed questions",
+        "operationId": "decisions_v1_decisions_post",
         "parameters": [
           {
             "name": "diagnostics",
@@ -62,7 +62,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SystemOneRequest"
+                "$ref": "#/components/schemas/DecisionRequest"
               }
             }
           }
@@ -73,7 +73,57 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SystemOneResponse"
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/systemone": {
+      "post": {
+        "summary": "Compatibility alias for POST /v1/decisions",
+        "operationId": "decisions_compatibility_alias_v1_systemone_post",
+        "parameters": [
+          {
+            "name": "diagnostics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Diagnostics"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
                 }
               }
             }
@@ -156,6 +206,111 @@
           "criteria"
         ],
         "title": "ChoiceQuestion"
+      },
+      "DecisionRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "local-gemma-riderless-v1"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "questions": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NoulQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ChoiceQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreQuestion"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "choice": "#/components/schemas/ChoiceQuestion",
+                  "noul": "#/components/schemas/NoulQuestion",
+                  "score": "#/components/schemas/ScoreQuestion"
+                }
+              }
+            },
+            "type": "object",
+            "maxProperties": 32,
+            "minProperties": 1,
+            "title": "Questions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "questions"
+        ],
+        "title": "DecisionRequest"
+      },
+      "DecisionResponse": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "const": "local-gemma-riderless-v1",
+            "title": "Model"
+          },
+          "answers": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ChoiceAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/ScoreAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/NoulAnswer"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "choice": "#/components/schemas/ChoiceAnswer",
+                  "noul": "#/components/schemas/NoulAnswer",
+                  "score": "#/components/schemas/ScoreAnswer"
+                }
+              }
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/QuestionDiagnostics"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "answers",
+          "usage"
+        ],
+        "title": "DecisionResponse"
       },
       "Entry": {
         "anyOf": [
@@ -582,111 +737,6 @@
             "type": "array"
           }
         ]
-      },
-      "SystemOneRequest": {
-        "properties": {
-          "model": {
-            "type": "string",
-            "title": "Model",
-            "default": "local-gemma-systemone-v1"
-          },
-          "state": {
-            "$ref": "#/components/schemas/State"
-          },
-          "questions": {
-            "additionalProperties": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/NoulQuestion"
-                },
-                {
-                  "$ref": "#/components/schemas/ChoiceQuestion"
-                },
-                {
-                  "$ref": "#/components/schemas/ScoreQuestion"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "type",
-                "mapping": {
-                  "choice": "#/components/schemas/ChoiceQuestion",
-                  "noul": "#/components/schemas/NoulQuestion",
-                  "score": "#/components/schemas/ScoreQuestion"
-                }
-              }
-            },
-            "type": "object",
-            "maxProperties": 32,
-            "minProperties": 1,
-            "title": "Questions"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "state",
-          "questions"
-        ],
-        "title": "SystemOneRequest"
-      },
-      "SystemOneResponse": {
-        "properties": {
-          "model": {
-            "type": "string",
-            "const": "local-gemma-systemone-v1",
-            "title": "Model"
-          },
-          "answers": {
-            "additionalProperties": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ChoiceAnswer"
-                },
-                {
-                  "$ref": "#/components/schemas/ScoreAnswer"
-                },
-                {
-                  "$ref": "#/components/schemas/NoulAnswer"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "type",
-                "mapping": {
-                  "choice": "#/components/schemas/ChoiceAnswer",
-                  "noul": "#/components/schemas/NoulAnswer",
-                  "score": "#/components/schemas/ScoreAnswer"
-                }
-              }
-            },
-            "type": "object",
-            "title": "Answers"
-          },
-          "usage": {
-            "$ref": "#/components/schemas/Usage"
-          },
-          "diagnostics": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/QuestionDiagnostics"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diagnostics"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "model",
-          "answers",
-          "usage"
-        ],
-        "title": "SystemOneResponse"
       },
       "Usage": {
         "properties": {

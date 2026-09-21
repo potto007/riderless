@@ -7,7 +7,7 @@ and [0002](decisions/0002-share-state-prefix-within-a-request.md).
 ## Process model
 
 ```
-HTTP client  ->  FastAPI app (systemone/api/app.py)
+HTTP client  ->  FastAPI app (riderless/api/app.py)
                    ApiService: single-flight guard, timeouts
                      compiler.py   -> one prompt per question
                      native_backend.py -> JSONL over stdio
@@ -32,7 +32,7 @@ HTTP client  ->  FastAPI app (systemone/api/app.py)
   529 until the app is restarted. This is deliberate: a silent restart would
   reload about 17 GiB onto a GPU with nobody checking headroom.
 - **Worker stderr never reaches a client.** It is drained into a bounded tail of
-  the last 200 lines and logged at DEBUG under the `systemone.api.native`
+  the last 200 lines and logged at DEBUG under the `riderless.api.native`
   logger. HTTP error bodies carry a code, a message, an optional field name, and
   a retryable flag, and nothing else.
 - **A hostile environment is refused at startup.** Both the Python side and the
@@ -131,7 +131,7 @@ constant that the worker enforces.
 **Handshake.** The worker's first line is a `hello`:
 
 ```json
-{"type": "hello", "protocol_version": 2, "model_id": "local-gemma-systemone-v1",
+{"type": "hello", "protocol_version": 2, "model_id": "local-gemma-riderless-v1",
  "model_name": "...", "model_sha256": "...", "runtime_sha256": "...",
  "labels": ["A", "B", "..."], "label_token_ids": [1, 2],
  "context_size": 2048, "batch_size": 256, "ubatch_size": 256, "threads": 8,
@@ -148,7 +148,7 @@ matches what it asked for, including both hashes.
 {"type": "evaluate", "id": "<correlation id>",
  "questions": [{"id": "route", "messages": [{"role": "user", "content": "..."}],
                 "answer_prefix": "Answer:\n", "labels": ["A", "B"],
-                "prompt_version": "systemone-gemma-choice-v1",
+                "prompt_version": "riderless-gemma-choice-v1",
                 "shared_prefix_bytes": 512}]}
 ```
 
@@ -189,7 +189,7 @@ reaps the child.
 
 ## Provenance manifests
 
-The worker is built by `python -m systemone.api.native.build`, which is
+The worker is built by `python -m riderless.api.native.build`, which is
 create-only: it refuses an output directory that already exists, so a build can
 never be silently overwritten. Before compiling it validates the base runtime:
 the llama.cpp revision must equal the pinned one, the headers and shared

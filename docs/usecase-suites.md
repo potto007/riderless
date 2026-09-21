@@ -1,6 +1,6 @@
 # The use-case suites
 
-Seven suites in [`systemone/examples/usecases/`](../systemone/examples/usecases/)
+Seven suites in [`riderless/examples/usecases/`](../riderless/examples/usecases/)
 hold 241 cases and 1,286 questions of original, hand-authored material with gold
 labels. They exist to measure task quality beyond the 36-question conformance
 smoke set, across the families of workload this kind of API is used for.
@@ -66,10 +66,10 @@ omits is treated as worse than every listed one when pairs are counted.
 ## Running them
 
 ```bash
-PYTHONPATH=. python scripts/systemone/run_usecase_suites.py \
-  --suites systemone/examples/usecases \
+PYTHONPATH=. python scripts/riderless/run_usecase_suites.py \
+  --suites riderless/examples/usecases \
   --out runs/usecase-suites-001 \
-  --worker build/api-worker/build/systemone-api-worker \
+  --worker build/api-worker/build/riderless-worker \
   --manifest build/api-worker/build.json \
   --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
   --allow-gpu

@@ -1,4 +1,4 @@
-# systemone-local Code of Conduct
+# riderless Code of Conduct
 
 ## Our Pledge
 
@@ -43,29 +43,27 @@ We agree to restrict the following behaviors in our community. Instances, threat
 
 ## Reporting and enforcement
 
-Report possible violations privately to the maintainer. Open a private report
-through
-[GitHub private vulnerability reporting](https://github.com/OWNER/systemone-local/security/advisories/new)
-and mark it clearly as a conduct concern rather than a security issue; that
-channel is private to the maintainer and is the project's private contact
-route today. Include links, dates, relevant context, and any immediate
-concerns. Keep sensitive reports out of public issues and pull requests.
+Report possible violations privately to Paul Otto (`potto007`) at
+[potto007@gmail.com](mailto:potto007@gmail.com). Paul is the project's sole
+moderator and reviews conduct reports. Include links, dates, relevant context,
+and any immediate concerns. Keep sensitive reports out of public issues and
+pull requests.
 
-The maintainer reviews the available evidence, seeks clarification from
-affected people when appropriate, and chooses a response proportionate to the
-behavior and its impact. Responses may include asking for a change, a private
-warning, editing or hiding comments, locking a discussion, closing a
-contribution, or temporarily or permanently restricting participation. Serious
-incidents may warrant immediate restrictions.
+The moderator reviews the available evidence, seeks clarification from affected
+people when appropriate, and chooses a response proportionate to the behavior
+and its impact. Responses may include asking for a change, a private warning,
+editing or hiding comments, locking a discussion, closing a contribution, or
+temporarily or permanently restricting participation. Serious incidents may
+warrant immediate restrictions.
 
 Report details are shared only as needed to review and address the incident.
-The maintainer aims to communicate decisions privately when possible. Absolute
+The moderator aims to communicate decisions privately when possible. Absolute
 confidentiality and response deadlines cannot be guaranteed. A participant may
-ask the maintainer to reconsider a decision with additional context.
+ask the moderator to reconsider a decision with additional context.
 
-The project has a single maintainer and no independent moderator or appeals
-panel. A report involving the maintainer therefore cannot receive independent
-project review. Conduct that violates GitHub's own policies can also be
+The project has no independent moderator or appeals panel. A report involving
+Paul therefore cannot receive independent project review. Conduct that violates
+GitHub's own policies can also be
 [reported to GitHub Support](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam);
 that process concerns GitHub's rules and is not a project appeal.
 
@@ -74,9 +72,9 @@ For software vulnerabilities, use the private reporting route in the
 
 ## Scope
 
-This policy applies in systemone-local's issues, pull requests, comments, and
+This policy applies in riderless's issues, pull requests, comments, and
 other project-controlled community spaces. It also applies when someone
-explicitly represents systemone-local in public, such as through an official
+explicitly represents riderless in public, such as through an official
 project account or as an appointed representative. It does not govern
 unrelated personal activity.
 
@@ -85,7 +83,7 @@ unrelated personal activity.
 This Code of Conduct is adapted from the
 [Contributor Covenant, version 3.0](https://www.contributor-covenant.org/version/3/0/),
 stewarded by the Organization for Ethical Source. The reporting, enforcement,
-and scope sections have been adapted for systemone-local's solo maintainer.
+and scope sections have been adapted for riderless's solo maintainer.
 
 Contributor Covenant and this adaptation are licensed under
 [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/).

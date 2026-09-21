@@ -1,4 +1,4 @@
-# systemone-local
+# riderless
 
 A local decision API that answers structured questions by reading logits, with
 zero generated tokens. You supply a `state` and a named map of questions; the
@@ -9,6 +9,17 @@ It is not a chat model, not a text generator, and not a drop-in replacement for
 a hosted service. It runs one llama.cpp child process on your own machine,
 answers one request at a time, and never samples or appends a token.
 
+## Why riderless
+
+Jonathan Haidt describes the mind as a rider on an elephant: the elephant is the
+fast, automatic part that actually moves, and the rider is the conscious
+narrator who explains afterwards where they were going (The Happiness
+Hypothesis, 2006, reused in The Righteous Mind). The elephant is roughly what
+Kahneman calls System 1. This API reads the decision straight off the model's
+final-position logits and never lets it narrate: no explanation, no
+after-the-fact story, zero generated tokens. The name is a label for that design
+choice, not a claim about how the model works inside.
+
 ## The three question types
 
 A request names the model, one state (a string or any JSON value), and up to 32
@@ -17,7 +28,7 @@ the prompt.
 
 ```json
 {
-  "model": "local-gemma-systemone-v1",
+  "model": "local-gemma-riderless-v1",
   "state": {"message": "The card was charged twice"},
   "questions": {
     "route": {
@@ -45,7 +56,7 @@ only `P(true)`.
 
 ```json
 {
-  "model": "local-gemma-systemone-v1",
+  "model": "local-gemma-riderless-v1",
   "answers": {
     "route": {
       "type": "choice",
@@ -121,27 +132,27 @@ uv sync
 # 1. Build the pinned llama.cpp base runtime (headers, shared libraries, and a
 #    build.json that records the revision and per-file hashes). Drop --cuda for a
 #    CPU-only runtime; with it you need a CUDA toolkit on the machine.
-uv run python scripts/systemone/build_base_runtime.py \
+uv run python scripts/riderless/build_base_runtime.py \
   --out build/llama-base --cuda
 
 # 2. Build the worker against that frozen runtime. The output directory must not
 #    already exist; the build records every input hash in build.json and runs its
 #    CPU unit test. No model is loaded and no GPU work happens here.
-uv run python -m systemone.api.native.build \
+uv run python -m riderless.api.native.build \
   --base build/llama-base \
   --output build/api-worker
 
 # 3a. Answer a file of requests (one JSON object, a JSON array, or JSONL).
-uv run python -m systemone.api.cli run \
+uv run python -m riderless.api.cli run \
   --input requests.jsonl --output results.jsonl \
-  --worker build/api-worker/build/systemone-api-worker \
+  --worker build/api-worker/build/riderless-worker \
   --manifest build/api-worker/build.json \
   --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
   --gpu --diagnostics
 
 # 3b. Or run the ASGI app on loopback for a manual look.
-uv run python -m systemone.api.cli serve \
-  --worker build/api-worker/build/systemone-api-worker \
+uv run python -m riderless.api.cli serve \
+  --worker build/api-worker/build/riderless-worker \
   --manifest build/api-worker/build.json \
   --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
   --gpu --host 127.0.0.1 --port 8090
@@ -152,18 +163,20 @@ omit `--worker` and `--manifest` if you keep this layout. Download the Gemma 4
 26B-A4B instruction-tuned GGUF yourself and point `--model-path` at it; the
 default expects it at `models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.
 
-Routes: `POST /v1/systemone`, `GET /v1/models`, `GET /health`, plus FastAPI's
+Routes: `POST /v1/decisions`, `GET /v1/models`, `GET /health`, plus FastAPI's
 `/openapi.json`. Add `?diagnostics=true` to a request for a per-question readout
 (raw label logits, token mapping, allowed-label coverage, full-vocabulary
 argmax, prompt hash and version, prompt/processed/reused token counts, timing,
 model and runtime hashes, and the `generated_tokens: 0` and
 `callbacks_enabled: false` invariants). `GET /v1/models` reports the live limits
 and capabilities. A copy of the validated schema is at
-[docs/openapi.json](docs/openapi.json).
+[docs/openapi.json](docs/openapi.json). `POST /v1/systemone` is a compatibility
+alias that behaves identically to `POST /v1/decisions`, offered as an
+interoperability path for clients written against that request shape.
 
 The batch CLI creates its output file only if the path does not exist, and
 starts one backend for the whole batch. A JSONL adapter for SemIf-style rows
-(`python -m systemone.api.semif to-api|from-api`) preserves row ids and option
+(`python -m riderless.api.semif to-api|from-api`) preserves row ids and option
 order.
 
 ## Errors
@@ -174,7 +187,7 @@ stderr is never copied into an HTTP body.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 400 | `malformed_json`, `invalid_content_length` | The body is not valid JSON, or the length header is unusable. |
-| 404 | `unknown_model` | `model` is not `local-gemma-systemone-v1`. |
+| 404 | `unknown_model` | `model` is not `local-gemma-riderless-v1`. |
 | 408 | `timeout` | The request exceeded the configured timeout. Retryable. The child is reaped. |
 | 413 | `request_too_large` | Body over the configured limit (1 MiB by default). |
 | 415 | `unsupported_media_type` | Content type is not `application/json`. |
@@ -222,7 +235,11 @@ Read these before trusting an answer.
 ## Measured results
 
 All numbers come from runs on one RTX 5090 with Gemma 4 26B-A4B UD-Q4_K_XL, and
-every one of them is reproduced with its context in `docs/results/`.
+every one of them is reproduced with its context in `docs/results/`. Those runs
+were recorded before this project was renamed, under the earlier internal model
+id `local-gemma-systemone-v1` and the worker binary name that went with it; the
+rename changed identifiers only, and the compiled prompt text is byte-identical
+across it.
 
 - Conformance and isolation: 36 of 36 hand-authored smoke answers, 0 generated
   tokens on every request, 72 isolation comparisons at exactly 0.0 delta, and a

@@ -10,12 +10,12 @@ part of this repository.
 ## What was validated
 
 The validation protocol and the 36-question fixture
-([`systemone/examples/api-v1-cases.json`](../../systemone/examples/api-v1-cases.json),
+([`riderless/examples/api-v1-cases.json`](../../riderless/examples/api-v1-cases.json),
 12 requests: 17 Choice, 14 Noul, 5 Score) were frozen before any inference for
 this API, and the fixture hash is recorded before the model loads. The harness
-is [`scripts/systemone/validate_api_v1.py`](../../scripts/systemone/validate_api_v1.py);
+is [`scripts/riderless/validate_api_v1.py`](../../scripts/riderless/validate_api_v1.py);
 failure paths are driven by
-[`scripts/systemone/validate_api_failures.py`](../../scripts/systemone/validate_api_failures.py).
+[`scripts/riderless/validate_api_failures.py`](../../scripts/riderless/validate_api_failures.py).
 
 Runtime configuration for every run below: context 2048, batch 256, ubatch 256,
 8 threads, all 31 layers offloaded to the GPU, causal attention, CUDA fusion and
@@ -80,7 +80,7 @@ the real worker rather than only a fake one.
 
 ## CLI and SemIf adapter
 
-Run through `python -m systemone.api.cli run --gpu --diagnostics`, sequentially,
+Run through `python -m riderless.api.cli run --gpu --diagnostics`, sequentially,
 one model load per invocation. Every answer was bit-identical to an earlier run
 on a previous worker build.
 
@@ -101,10 +101,12 @@ was refused at startup before any model load.
 The checks this repository runs, which are also the ones in
 `.github/workflows/ci.yml`, pass: `ruff format --check .` and `ruff check .`
 (line length 88, rules `E,F,I,UP,B,SIM`), `mypy --strict
---explicit-package-bases systemone scripts`, and `pytest`, which is 53 tests
-across `systemone/tests`. The larger validation run above was recorded against
-the originating tree, which carried additional legacy modules and their tests;
-only the API, its tests, and the harness were ported here.
+--explicit-package-bases riderless scripts`, and `pytest`, which is 55 tests
+across `riderless/tests` (53 at the validated commit, plus two that cover the
+`POST /v1/systemone` compatibility alias added with the rename). The larger
+validation run above was recorded against the originating tree, which carried
+additional legacy modules and their tests; only the API, its tests, and the
+harness were ported here.
 
 ## Independent review
 

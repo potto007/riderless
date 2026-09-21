@@ -34,7 +34,7 @@ prefill) into a checked one. The shipped worker generalizes the same check for
 shared-prefix reuse: it compares the held position against `held`, which is
 `prefix - 1` when a prefix is reused and -1 otherwise, so it now asserts the
 reused prefix exactly. See `evaluate_question` in
-`systemone/api/native/worker.cpp`. The preceding build step had introduced a
+`riderless/api/native/worker.cpp`. The preceding build step had introduced a
 `budget_error` exception type so that an over-context prompt reports
 `reason: "budget"` instead of a generic preflight reason.
 

@@ -1,5 +1,5 @@
 [project]
-name = "systemone-local"
+name = "riderless"
 version = "0.1.0"
 description = "A local, non-generative decision API: typed questions answered from final-position logits, with zero generated tokens."
 readme = "README.md"
@@ -32,22 +32,22 @@ dev = [
 ]
 
 [project.scripts]
-systemone-api = "systemone.api.cli:main"
-systemone-semif = "systemone.api.semif:main"
+riderless-api = "riderless.api.cli:main"
+riderless-semif = "riderless.api.semif:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["systemone"]
+packages = ["riderless"]
 # The tests import the harness under scripts/, which is not packaged, so they
 # would be unimportable in an installed distribution.
-exclude = ["systemone/tests"]
+exclude = ["riderless/tests"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["systemone/tests"]
+testpaths = ["riderless/tests"]
 pythonpath = ["."]
 
 [tool.ruff]

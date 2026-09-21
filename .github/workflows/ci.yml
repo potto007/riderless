@@ -31,7 +31,7 @@ jobs:
       - name: ruff check
         run: uv run --no-sync ruff check .
       - name: mypy
-        run: uv run --no-sync mypy --strict --explicit-package-bases systemone scripts
+        run: uv run --no-sync mypy --strict --explicit-package-bases riderless scripts
       - name: pytest
         run: uv run --no-sync pytest
 
@@ -43,14 +43,14 @@ jobs:
       # worker-utils-test.cpp includes only worker-utils.h and the C++
       # standard library, so it builds and runs without llama.cpp, without
       # a model, and without a GPU. The CMake project in
-      # systemone/api/native also configures the full worker target and
+      # riderless/api/native also configures the full worker target and
       # therefore needs LLAMA_SOURCE and LLAMA_BUILD, so CI compiles the
       # helper test directly instead of going through cmake and ctest.
       - name: Build worker-utils test
         run: |
           mkdir -p build
           c++ -std=c++17 -Wall -Wextra -Werror -O2 \
-            -o build/worker-utils-test \
-            systemone/api/native/worker-utils-test.cpp
+            -o build/riderless-worker-utils-test \
+            riderless/api/native/worker-utils-test.cpp
       - name: Run worker-utils test
-        run: ./build/worker-utils-test
+        run: ./build/riderless-worker-utils-test
