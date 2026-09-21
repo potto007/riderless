@@ -17,6 +17,7 @@ from riderless.api.backend import (
     BackendUnavailableError,
 )
 from riderless.api.compiler import CompiledBatch, compile_request
+from riderless.api.native.build import TESTED_LLAMA_REVISION
 from riderless.api.native_backend import NativeBackend
 from riderless.api.schema import BackendProfile, DecisionRequest
 
@@ -25,7 +26,11 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _fake_install(tmp_path: Path, mode: str = "normal") -> tuple[Path, Path, Path]:
+def _fake_install(
+    tmp_path: Path,
+    mode: str = "normal",
+    revision: str = TESTED_LLAMA_REVISION,
+) -> tuple[Path, Path, Path]:
     worker = tmp_path / "worker"
     worker.write_text(
         """#!/usr/bin/env python3
@@ -92,7 +97,7 @@ for line in sys.stdin:
         json.dumps(
             {
                 "schema_version": 1,
-                "llama_revision": "afeebe103bd99cda8f5dfaefcabadf890db7fda7",
+                "llama_revision": revision,
                 "runtime_dir": str(runtime),
                 "runtime_sha256": checksums,
                 "runtime_bundle_sha256": hashlib.sha256(
@@ -230,6 +235,85 @@ async def test_control_token_rejection_keeps_the_child_and_names_its_reason(
 
     assert caught.value.reason == "control_tokens"
     assert still_ready is True
+
+
+@pytest.mark.asyncio
+async def test_tested_revision_starts_and_says_so_without_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    with caplog.at_level("WARNING"):
+        profile = await backend.start()
+    await backend.close()
+
+    assert profile.llama_revision == TESTED_LLAMA_REVISION
+    assert profile.tested_revision is True
+    assert caplog.records == []
+
+
+@pytest.mark.asyncio
+async def test_untested_revision_starts_but_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    other = "0" * 40
+    worker, model, manifest = _fake_install(tmp_path, revision=other)
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    with caplog.at_level("WARNING"):
+        profile = await backend.start()
+    result = await backend.evaluate(_batch(profile), timeout=2.0)
+    await backend.close()
+
+    # An untested revision is a provenance warning, never a refusal.
+    assert profile.llama_revision == other
+    assert profile.tested_revision is False
+    assert result.questions[0].id == "q"
+    assert len(caplog.records) == 1
+    warning = caplog.records[0].getMessage()
+    assert other in warning and TESTED_LLAMA_REVISION in warning
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corruption", ["runtime", "executable", "revision"])
+async def test_corrupted_manifest_is_still_refused(
+    tmp_path: Path, corruption: str
+) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    recorded = json.loads(manifest.read_text())
+    if corruption == "runtime":
+        # The library on disk is no longer the one the manifest vouched for.
+        (Path(recorded["runtime_dir"]) / "libfixture.so").write_bytes(b"tampered")
+    elif corruption == "executable":
+        recorded["executable_sha256"] = "0" * 64
+        manifest.write_text(json.dumps(recorded))
+    else:
+        del recorded["llama_revision"]
+        manifest.write_text(json.dumps(recorded))
+
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    with pytest.raises(BackendUnavailableError):
+        await backend.start()
+
+    assert backend.pid is None
+    assert backend.ready is False
 
 
 @pytest.mark.asyncio

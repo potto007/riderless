@@ -163,6 +163,10 @@ class BackendProfile(StrictModel):
     model_name: str
     model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     runtime_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # The llama.cpp commit the linked runtime was built from, and whether that
+    # is the revision this project's published measurements were taken on.
+    llama_revision: str = Field(min_length=1)
+    tested_revision: bool
     labels: list[str] = Field(min_length=2, max_length=255)
     label_token_ids: list[int] = Field(min_length=2, max_length=255)
     context_size: int = Field(ge=1)

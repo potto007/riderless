@@ -10,7 +10,7 @@ import os
 import uuid
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import ValidationError
 
@@ -21,12 +21,26 @@ from riderless.api.backend import (
     BackendUnavailableError,
 )
 from riderless.api.compiler import CompiledBatch
-from riderless.api.native.build import FROZEN_LLAMA_REVISION, bundle_digest, digest
+from riderless.api.native.build import (
+    TESTED_LLAMA_REVISION,
+    bundle_digest,
+    digest,
+    is_tested_revision,
+)
 from riderless.api.schema import BackendProfile, WorkerBatchResult
 
 LOGGER = logging.getLogger("riderless.api.native")
 # Mirrors MAX_PROTOCOL_BYTES in native/worker.cpp; a longer line kills the worker.
 WORKER_PROTOCOL_BYTES = 4 * 1024 * 1024
+
+
+class VerifiedInstall(NamedTuple):
+    """What the on-disk install proved about itself before the child started."""
+
+    model_sha256: str
+    runtime_sha256: str
+    runtime_dir: Path
+    llama_revision: str
 
 
 class NativeBackend:
@@ -81,7 +95,7 @@ class NativeBackend:
     def stderr_tail(self) -> tuple[str, ...]:
         return tuple(self._stderr_tail)
 
-    def _verify_files(self) -> tuple[str, str, Path]:
+    def _verify_files(self) -> VerifiedInstall:
         for path, name in (
             (self.worker_path, "worker"),
             (self.model_path, "model"),
@@ -92,8 +106,13 @@ class NativeBackend:
         manifest: Any = json.loads(self.manifest_path.read_text())
         if not isinstance(manifest, dict):
             raise TypeError("manifest must be an object")
-        if manifest.get("llama_revision") != FROZEN_LLAMA_REVISION:
-            raise ValueError("manifest runtime revision is not frozen")
+        # Which llama.cpp this was built against is provenance, not integrity:
+        # every hash below is checked whatever the revision turns out to be.
+        # A revision other than the tested one only earns a warning, because
+        # the measurements this project publishes were taken on that one.
+        revision = manifest.get("llama_revision")
+        if not isinstance(revision, str) or not revision:
+            raise ValueError("manifest does not name a llama revision")
         if Path(str(manifest.get("executable", ""))).resolve() != self.worker_path:
             raise ValueError("configured worker differs from manifest")
         if digest(self.worker_path) != manifest.get("executable_sha256"):
@@ -122,7 +141,8 @@ class NativeBackend:
         expected = self.expected_model_sha256
         if expected is not None and model_sha256 != expected:
             raise ValueError("model hash differs from the configured model")
-        return model_sha256, runtime_sha256, runtime_dir
+        is_tested_revision(revision)
+        return VerifiedInstall(model_sha256, runtime_sha256, runtime_dir, revision)
 
     async def start(self) -> BackendProfile:
         if self.ready and self.profile is not None:
@@ -138,9 +158,10 @@ class NativeBackend:
                 )
         try:
             self._stderr_tail.clear()
-            model_sha256, runtime_sha256, runtime_dir = await asyncio.to_thread(
-                self._verify_files
-            )
+            installed = await asyncio.to_thread(self._verify_files)
+            model_sha256 = installed.model_sha256
+            runtime_sha256 = installed.runtime_sha256
+            runtime_dir = installed.runtime_dir
             command = [
                 str(self.worker_path),
                 "--model",
@@ -188,6 +209,12 @@ class NativeBackend:
                 for key, value in raw.items()
                 if key not in {"type", "protocol_version"}
             }
+            # The worker links the runtime but has no way to know which revision
+            # produced it, so provenance is attached from the verified manifest.
+            profile_payload["llama_revision"] = installed.llama_revision
+            profile_payload["tested_revision"] = (
+                installed.llama_revision == TESTED_LLAMA_REVISION
+            )
             profile = BackendProfile.model_validate(profile_payload)
             if (
                 profile.model_sha256 != model_sha256
