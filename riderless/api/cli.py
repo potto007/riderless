@@ -84,6 +84,17 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--context", type=int, default=defaults.context_size)
     parser.add_argument("--batch", type=int, default=defaults.batch_size)
     parser.add_argument("--ubatch", type=int, default=defaults.ubatch_size)
+    parser.add_argument(
+        "--batched",
+        action="store_true",
+        help="evaluate a request's questions in one batched decode (ADR 0004)",
+    )
+    parser.add_argument(
+        "--batched-context",
+        type=int,
+        default=defaults.batched_context,
+        help="KV cells a batched worker reserves, about 0.21 MiB each",
+    )
     parser.add_argument("--threads", type=int, default=defaults.threads)
     parser.add_argument(
         "--request-timeout", type=float, default=defaults.request_timeout
@@ -103,6 +114,8 @@ def _config(args: argparse.Namespace) -> ApiConfig:
         context_size=args.context,
         batch_size=args.batch,
         ubatch_size=args.ubatch,
+        batched=args.batched,
+        batched_context=args.batched_context,
         threads=args.threads,
         request_timeout=args.request_timeout,
         startup_timeout=args.startup_timeout,

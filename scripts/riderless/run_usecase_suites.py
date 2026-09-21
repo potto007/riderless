@@ -654,6 +654,8 @@ def _config(args: argparse.Namespace) -> ApiConfig:
         batch_size=args.batch_size,
         ubatch_size=args.batch_size,
         share_prefix=not args.no_share_prefix,
+        batched=args.batched,
+        batched_context=args.batched_context,
     )
 
 
@@ -687,6 +689,14 @@ async def run(
                 len(case.targets) for suite in suites for case in suite.cases
             )
             config = _config(args)
+            manifest["batched"] = config.batched
+            # A sequential worker has no batched cache; recording the unused
+            # default here would misattribute its VRAM figure.
+            manifest["batched_context"] = (
+                config.batched_context if config.batched else 0
+            )
+            manifest["batch_size"] = config.batch_size
+            manifest["share_prefix"] = config.share_prefix
             for key, path in (
                 ("worker_sha256", config.worker_path),
                 ("build_manifest_sha256", config.manifest_path),
@@ -834,6 +844,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-path", type=Path, default=defaults.model_path)
     parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
     parser.add_argument("--no-share-prefix", action="store_true")
+    parser.add_argument(
+        "--batched",
+        action="store_true",
+        help="evaluate each request's questions in one batched decode",
+    )
+    parser.add_argument(
+        "--batched-context",
+        type=int,
+        default=defaults.batched_context,
+        help="KV cells a batched worker reserves, about 0.21 MiB each",
+    )
     parser.add_argument(
         "--extra-log",
         type=Path,

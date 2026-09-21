@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -31,6 +32,8 @@ PROFILE = BackendProfile(
     ubatch_size=256,
     threads=8,
     max_questions=32,
+    batched_mode=False,
+    batched_context=0,
     generated_tokens=0,
     callbacks_enabled=False,
     execution_mode="full",
@@ -162,6 +165,7 @@ def test_mapping_returns_typed_answers_and_literal_score_expectation() -> None:
             "generated_tokens": 0,
             "callbacks_enabled": False,
             "execution_mode": "full",
+            "batched_fallback": None,
             "questions": [
                 {
                     "id": "route",
@@ -174,6 +178,8 @@ def test_mapping_returns_typed_answers_and_literal_score_expectation() -> None:
                     "processed_tokens": 19,
                     "reused_tokens": 0,
                     "cache_cleared": True,
+                    "evaluation_mode": "sequential",
+                    "batch_sequences": 1,
                     "timing_ms": 2.5,
                 },
                 {
@@ -187,6 +193,8 @@ def test_mapping_returns_typed_answers_and_literal_score_expectation() -> None:
                     "processed_tokens": 8,
                     "reused_tokens": 12,
                     "cache_cleared": False,
+                    "evaluation_mode": "sequential",
+                    "batch_sequences": 1,
                     "timing_ms": 3.0,
                 },
                 {
@@ -200,6 +208,8 @@ def test_mapping_returns_typed_answers_and_literal_score_expectation() -> None:
                     "processed_tokens": 6,
                     "reused_tokens": 12,
                     "cache_cleared": False,
+                    "evaluation_mode": "sequential",
+                    "batch_sequences": 1,
                     "timing_ms": 2.0,
                 },
             ],
@@ -253,6 +263,8 @@ def test_worker_result_rejects_inconsistent_token_accounting() -> None:
         "processed_tokens": 8,
         "reused_tokens": 12,
         "cache_cleared": False,
+        "evaluation_mode": "sequential",
+        "batch_sequences": 1,
         "timing_ms": 1.0,
     }
     WorkerQuestionResult.model_validate(row)
@@ -260,6 +272,155 @@ def test_worker_result_rejects_inconsistent_token_accounting() -> None:
         WorkerQuestionResult.model_validate({**row, "processed_tokens": 20})
     with pytest.raises(ValueError, match="contradicts"):
         WorkerQuestionResult.model_validate({**row, "cache_cleared": True})
+    with pytest.raises(ValueError, match="shared its decode"):
+        WorkerQuestionResult.model_validate({**row, "batch_sequences": 3})
+
+
+BATCHED_PROFILE = PROFILE.model_copy(
+    update={"batched_mode": True, "batched_context": 8192}
+)
+
+
+def _batched_questions() -> list[dict[str, Any]]:
+    def question(index: int, reused: int) -> dict[str, Any]:
+        return {
+            "id": ["route", "severity", "urgent"][index],
+            "label_logits": [0.0, 1.0] if index != 1 else [0.0, 1.0, 2.0],
+            "label_token_ids": [101, 102] if index != 1 else [101, 102, 103],
+            "allowed_label_mass": 0.5,
+            "full_vocabulary_argmax": {"token_id": 9, "logit": 3.0},
+            "prompt_sha256": f"{index + 1:064x}",
+            "prompt_tokens": 20,
+            "processed_tokens": 20 - reused,
+            "reused_tokens": reused,
+            "cache_cleared": reused == 0,
+            "evaluation_mode": "batched",
+            "batch_sequences": 3,
+            "timing_ms": 1.0,
+        }
+
+    return [question(0, 0), question(1, 12), question(2, 12)]
+
+
+def _sequential_questions() -> list[dict[str, Any]]:
+    return [
+        {**row, "evaluation_mode": "sequential", "batch_sequences": 1}
+        for row in _batched_questions()
+    ]
+
+
+def _batched_worker(**overrides: Any) -> dict[str, Any]:
+    return {
+        "type": "result",
+        "id": "corr-1",
+        "model_sha256": "a" * 64,
+        "runtime_sha256": "b" * 64,
+        "generated_tokens": 0,
+        "callbacks_enabled": False,
+        "execution_mode": "full",
+        "batched_fallback": None,
+        "questions": _batched_questions(),
+        **overrides,
+    }
+
+
+def test_batched_reports_siblings_and_survive_the_mapping_layer() -> None:
+    batch = compile_request(_request(), BATCHED_PROFILE)
+    worker = WorkerBatchResult.model_validate(_batched_worker())
+
+    response = map_response(batch, worker, BATCHED_PROFILE, include_diagnostics=True)
+
+    assert response.diagnostics is not None
+    for diagnostic in response.diagnostics.values():
+        assert diagnostic.evaluation_mode == "batched"
+        assert diagnostic.batch_sequences == 3
+    # The prefix is charged once, to the first question.
+    assert response.usage.input_tokens == 20 + 8 + 8
+    assert response.evaluation is not None
+    assert (response.evaluation.mode, response.evaluation.fallback) == (
+        "batched",
+        None,
+    )
+    # A sequential worker reports its single regime in the handshake instead.
+    sequential = map_response(
+        compile_request(_request(), PROFILE),
+        WorkerBatchResult.model_validate(
+            _batched_worker(questions=_sequential_questions())
+        ),
+        PROFILE,
+        include_diagnostics=False,
+    )
+    assert sequential.evaluation is None
+
+
+def test_batched_fallback_must_name_itself_and_match_the_handshake() -> None:
+    batch = compile_request(_request(), BATCHED_PROFILE)
+    sequential = _sequential_questions()
+
+    # A batched worker that answered sequentially has to say why.
+    silent = WorkerBatchResult.model_validate(_batched_worker(questions=sequential))
+    with pytest.raises(ValueError, match="without a reason"):
+        map_response(batch, silent, BATCHED_PROFILE, include_diagnostics=False)
+
+    named = WorkerBatchResult.model_validate(
+        _batched_worker(questions=sequential, batched_fallback="context")
+    )
+    response = map_response(batch, named, BATCHED_PROFILE, include_diagnostics=True)
+    assert response.diagnostics is not None
+    assert {
+        diagnostic.evaluation_mode for diagnostic in response.diagnostics.values()
+    } == {"sequential"}
+    # The fallback is a public fact, not a diagnostics-only one.
+    assert response.evaluation is not None
+    assert (response.evaluation.mode, response.evaluation.fallback) == (
+        "sequential",
+        "context",
+    )
+
+    # A sequential worker may never report batched work.
+    with pytest.raises(ValueError, match="sequential worker"):
+        map_response(
+            batch,
+            WorkerBatchResult.model_validate(_batched_worker()),
+            PROFILE,
+            include_diagnostics=False,
+        )
+
+
+def test_worker_batch_rejects_self_contradicting_batched_reports() -> None:
+    with pytest.raises(ValueError, match="mixed evaluation modes"):
+        WorkerBatchResult.model_validate(
+            _batched_worker(
+                questions=[
+                    _batched_questions()[0],
+                    _sequential_questions()[1],
+                    _batched_questions()[2],
+                ]
+            )
+        )
+    with pytest.raises(ValueError, match="fallback it did not take"):
+        WorkerBatchResult.model_validate(_batched_worker(batched_fallback="context"))
+    with pytest.raises(ValueError, match="sibling count differs"):
+        WorkerBatchResult.model_validate(
+            _batched_worker(
+                questions=[
+                    {**row, "batch_sequences": 2} for row in _batched_questions()
+                ]
+            )
+        )
+
+
+def test_profile_rejects_a_batched_context_that_contradicts_the_mode() -> None:
+    with pytest.raises(ValidationError, match="sequential worker"):
+        BackendProfile.model_validate({**PROFILE.model_dump(), "batched_context": 8192})
+    with pytest.raises(ValidationError, match="below the context size"):
+        BackendProfile.model_validate(
+            {
+                **PROFILE.model_dump(),
+                "batched_mode": True,
+                "batched_context": 1024,
+            }
+        )
 
 
 def test_compiler_marks_the_text_shared_by_every_question() -> None:
@@ -288,6 +449,7 @@ def test_mapping_rejects_partial_or_corrupt_worker_batches() -> None:
             "generated_tokens": 0,
             "callbacks_enabled": False,
             "execution_mode": "full",
+            "batched_fallback": None,
             "questions": [],
         }
     )

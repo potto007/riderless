@@ -57,6 +57,14 @@ class ApiConfig:
     ubatch_size: int = 256
     # False makes every question prefill its whole prompt from an empty context.
     share_prefix: bool = True
+    # Opt-in batched evaluation (ADR 0004). It is not bit-identical to the
+    # default, and a question's result then depends on its siblings.
+    batched: bool = False
+    # KV cells a batched worker reserves: the shared prefix plus every
+    # remainder. A request that needs more falls back to sequential. Each cell
+    # costs about 0.21 MiB of KV on this model (1,760 MiB measured at 8,192
+    # cells), so the cap below keeps a typo from reserving the whole card.
+    batched_context: int = 8192
     threads: int = 8
     max_questions: int = 32
     max_request_bytes: int = 1024 * 1024
@@ -73,11 +81,22 @@ class ApiConfig:
             "max_questions": self.max_questions,
             "max_request_bytes": self.max_request_bytes,
             "max_response_bytes": self.max_response_bytes,
+            "batched_context": self.batched_context,
         }
         if any(value <= 0 for value in positive.values()):
             raise ValueError("API limits must be positive")
         if self.max_questions > 32:
             raise ValueError("max_questions cannot exceed 32")
+        # Both bounds describe the batched cache, so neither applies to a
+        # sequential worker, which never allocates one and leaves the default
+        # batched_context unused.
+        if self.batched:
+            if self.batched_context < self.context_size:
+                raise ValueError("batched_context cannot be below context_size")
+            if self.batched_context > self.max_questions * self.context_size:
+                raise ValueError(
+                    "batched_context cannot exceed max_questions * context_size"
+                )
         if self.request_timeout <= 0 or self.startup_timeout <= 0:
             raise ValueError("timeouts must be positive")
 
@@ -163,6 +182,8 @@ def _default_backend(config: ApiConfig) -> Backend:
         context_size=config.context_size,
         batch_size=config.batch_size,
         ubatch_size=config.ubatch_size,
+        batched=config.batched,
+        batched_context=config.batched_context,
         threads=config.threads,
         max_questions=config.max_questions,
         max_response_bytes=config.max_response_bytes,
@@ -287,6 +308,8 @@ def create_app(
                         "batch": profile.batch_size,
                         "ubatch": profile.ubatch_size,
                         "threads": profile.threads,
+                        "batched": profile.batched_mode,
+                        "batched_context": profile.batched_context,
                         "generated_tokens": profile.generated_tokens,
                         "callbacks_enabled": profile.callbacks_enabled,
                         # False means this build links a llama.cpp revision

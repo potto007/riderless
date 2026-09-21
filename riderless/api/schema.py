@@ -8,6 +8,9 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MODEL_ID = "local-gemma-riderless-v1"
+type EvaluationMode = Literal["sequential", "batched"]
+# The only reason the worker may decline a batched request (ADR 0004).
+type BatchedFallback = Literal["context"]
 type JsonValue = (
     str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 )
@@ -143,6 +146,10 @@ class QuestionDiagnostics(StrictModel):
     prompt_tokens: int = Field(ge=1)
     processed_tokens: int = Field(ge=1)
     reused_tokens: int = Field(ge=0)
+    # How this question was evaluated, and how many question sequences shared
+    # its decodes. Sequential evaluation is always a batch of one.
+    evaluation_mode: EvaluationMode
+    batch_sequences: int = Field(ge=1, le=32)
     timing_ms: float = Field(ge=0.0)
     model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     runtime_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -151,10 +158,23 @@ class QuestionDiagnostics(StrictModel):
     callbacks_enabled: Literal[False]
 
 
+class Evaluation(StrictModel):
+    """How the request was evaluated. Present only on a batched worker.
+
+    A batched worker can answer a request sequentially (the ADR 0004 fallback),
+    and that is a different numeric regime, so it is reported in the public body
+    and not only under `?diagnostics=true`.
+    """
+
+    mode: EvaluationMode
+    fallback: BatchedFallback | None = None
+
+
 class DecisionResponse(StrictModel):
     model: Literal["local-gemma-riderless-v1"]
     answers: dict[str, Answer]
     usage: Usage
+    evaluation: Evaluation | None = None
     diagnostics: dict[str, QuestionDiagnostics] | None = None
 
 
@@ -174,12 +194,19 @@ class BackendProfile(StrictModel):
     ubatch_size: int = Field(ge=1)
     threads: int = Field(ge=1)
     max_questions: int = Field(ge=1, le=32)
+    batched_mode: bool
+    batched_context: int = Field(ge=0)
     generated_tokens: Literal[0]
     callbacks_enabled: Literal[False]
     execution_mode: Literal["full"]
 
     @model_validator(mode="after")
     def _label_mapping(self) -> Self:
+        if self.batched_mode:
+            if self.batched_context < self.context_size:
+                raise ValueError("batched context is below the context size")
+        elif self.batched_context != 0:
+            raise ValueError("a sequential worker reports a batched context")
         if len(self.labels) != len(self.label_token_ids):
             raise ValueError("label and token counts differ")
         if len(set(self.labels)) != len(self.labels):
@@ -200,6 +227,8 @@ class WorkerQuestionResult(StrictModel):
     processed_tokens: int = Field(ge=1)
     reused_tokens: int = Field(ge=0)
     cache_cleared: bool
+    evaluation_mode: EvaluationMode
+    batch_sequences: int = Field(ge=1, le=32)
     timing_ms: float = Field(ge=0.0)
 
     @model_validator(mode="after")
@@ -208,6 +237,8 @@ class WorkerQuestionResult(StrictModel):
             raise ValueError("worker token accounting does not cover the prompt")
         if self.cache_cleared != (self.reused_tokens == 0):
             raise ValueError("worker cache state contradicts its reused tokens")
+        if self.evaluation_mode == "sequential" and self.batch_sequences != 1:
+            raise ValueError("a sequential question shared its decode with siblings")
         if len(self.label_logits) != len(self.label_token_ids):
             raise ValueError("worker label logit and token counts differ")
         if not all(math.isfinite(item) for item in self.label_logits):
@@ -225,7 +256,23 @@ class WorkerBatchResult(StrictModel):
     generated_tokens: Literal[0]
     callbacks_enabled: Literal[False]
     execution_mode: Literal["full"]
+    # Set only when a batched worker had to answer this request sequentially.
+    batched_fallback: BatchedFallback | None
     questions: list[WorkerQuestionResult] = Field(max_length=32)
+
+    @model_validator(mode="after")
+    def _one_mode_per_request(self) -> Self:
+        modes = {question.evaluation_mode for question in self.questions}
+        if len(modes) > 1:
+            raise ValueError("worker mixed evaluation modes within one request")
+        if self.batched_fallback is not None and modes != {"sequential"}:
+            raise ValueError("worker reported a fallback it did not take")
+        if modes == {"batched"} and any(
+            question.batch_sequences != len(self.questions)
+            for question in self.questions
+        ):
+            raise ValueError("worker sibling count differs from the request")
+        return self
 
 
 class ErrorBody(StrictModel):

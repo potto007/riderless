@@ -32,6 +32,8 @@ PROFILE = BackendProfile(
     ubatch_size=256,
     threads=8,
     max_questions=32,
+    batched_mode=False,
+    batched_context=0,
     generated_tokens=0,
     callbacks_enabled=False,
     execution_mode="full",
@@ -71,6 +73,7 @@ class BatchBackend:
                 "generated_tokens": 0,
                 "callbacks_enabled": False,
                 "execution_mode": "full",
+                "batched_fallback": None,
                 "questions": [
                     {
                         "id": question.id,
@@ -83,6 +86,8 @@ class BatchBackend:
                         "processed_tokens": 12,
                         "reused_tokens": 0,
                         "cache_cleared": True,
+                        "evaluation_mode": "sequential",
+                        "batch_sequences": 1,
                         "timing_ms": 1.0,
                     }
                 ],

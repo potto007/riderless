@@ -52,6 +52,8 @@ PROFILE = BackendProfile(
     ubatch_size=256,
     threads=8,
     max_questions=32,
+    batched_mode=False,
+    batched_context=0,
     generated_tokens=0,
     callbacks_enabled=False,
     execution_mode="full",
@@ -107,6 +109,8 @@ class FakeBackend:
                     "processed_tokens": 10 + index,
                     "reused_tokens": 0,
                     "cache_cleared": True,
+                    "evaluation_mode": "sequential",
+                    "batch_sequences": 1,
                     "timing_ms": 1.0,
                 }
             )
@@ -119,6 +123,7 @@ class FakeBackend:
                 "generated_tokens": 0,
                 "callbacks_enabled": False,
                 "execution_mode": "full",
+                "batched_fallback": None,
                 "questions": rows,
             }
         )
@@ -235,6 +240,8 @@ def runner_args(tmp_path: Path, suites: Path) -> argparse.Namespace:
         allow_gpu=True,
         batch_size=256,
         no_share_prefix=False,
+        batched=False,
+        batched_context=8192,
     )
 
 

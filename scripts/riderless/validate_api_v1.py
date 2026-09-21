@@ -89,29 +89,48 @@ def compare_distributions(
     left: dict[str, dict[str, float]],
     right: dict[str, dict[str, float]],
     mapping: dict[str, str] | None = None,
+    *,
+    strict: bool = True,
 ) -> float:
+    """Largest probability move between two runs of the same questions.
+
+    `strict` is the sequential-mode contract: a question is computed the same
+    way whatever its siblings are. Batched mode gives that up by construction
+    (ADR 0004), so there the delta is recorded and the answer is not required
+    to stay put either.
+    """
     mapping = mapping or {key: key for key in left}
     assert set(left) == set(mapping)
     maximum = 0.0
     for key, other in mapping.items():
         assert set(left[key]) == set(right[other])
-        assert max(left[key], key=left[key].__getitem__) == max(
-            right[other], key=right[other].__getitem__
-        )
+        if strict:
+            assert max(left[key], key=left[key].__getitem__) == max(
+                right[other], key=right[other].__getitem__
+            )
         maximum = max(
             maximum,
             max(abs(value - right[other][label]) for label, value in left[key].items()),
         )
-    assert maximum <= TOLERANCE, maximum
+    if strict:
+        assert maximum <= TOLERANCE, maximum
     return maximum
 
 
-def audit_diagnostics(request: Row, response: Row, model_hash: str) -> None:
+def audit_diagnostics(
+    request: Row, response: Row, model_hash: str, *, batched: bool
+) -> None:
     details = response["diagnostics"]
     assert set(details) == set(request["questions"])
     tokens = 0
     for key, question in request["questions"].items():
         detail = details[key]
+        assert detail["evaluation_mode"] in ("sequential", "batched")
+        if not batched:
+            assert detail["evaluation_mode"] == "sequential"
+            assert detail["batch_sequences"] == 1
+        if detail["evaluation_mode"] == "batched":
+            assert detail["batch_sequences"] == len(request["questions"])
         raw = detail["raw_label_logits"]
         assert len(raw) == len(detail["token_mapping"])
         assert len(set(detail["token_mapping"].values())) == len(raw)
@@ -161,9 +180,41 @@ def audit_diagnostics(request: Row, response: Row, model_hash: str) -> None:
     reused = [details[key]["reused_tokens"] for key in request["questions"]]
     assert reused[0] == 0
     assert len(set(reused[1:])) <= 1, reused
+    modes = {details[key]["evaluation_mode"] for key in request["questions"]}
+    assert len(modes) == 1, modes
 
 
-def compare_diagnostics(left: Row, right: Row, mapping: dict[str, str]) -> float:
+def audit_contamination_regime(
+    request: Row, response: Row, *, batched: bool, label: str
+) -> None:
+    """Assert a contamination probe ran in the regime the run claims.
+
+    Without this the probe is vacuous in batched mode: a probe that fell back
+    to sequential (a small --batched-context, or a change to the fallback
+    trigger) shares no decode with its sibling, so its adversarial and
+    noise-floor deltas would be exactly 0.0 for a reason that says nothing
+    about the attention mask.
+    """
+    if not batched:
+        assert "evaluation" not in response, (label, response.get("evaluation"))
+        return
+    assert response["evaluation"] == {"mode": "batched"}, (
+        label,
+        response["evaluation"],
+    )
+    sequences = {
+        key: detail["batch_sequences"]
+        for key, detail in response["diagnostics"].items()
+    }
+    assert set(sequences) == set(request["questions"]), (label, sequences)
+    # The probe is a two-question request, so both rows must report the target
+    # and its sibling sharing one batch.
+    assert set(sequences.values()) == {2}, (label, sequences)
+
+
+def compare_diagnostics(
+    left: Row, right: Row, mapping: dict[str, str], *, strict: bool = True
+) -> float:
     maximum = 0.0
     for key, other in mapping.items():
         old, new = left["diagnostics"][key], right["diagnostics"][other]
@@ -183,7 +234,8 @@ def compare_diagnostics(left: Row, right: Row, mapping: dict[str, str]) -> float
                 old["raw_label_logits"], new["raw_label_logits"], strict=True
             )
         )
-        assert delta <= TOLERANCE, (key, "raw_label_logits", delta)
+        if strict:
+            assert delta <= TOLERANCE, (key, "raw_label_logits", delta)
         maximum = max(maximum, delta)
     return maximum
 
@@ -251,6 +303,77 @@ def benchmark_payload(question_count: int = 1, padding_words: int = 0) -> Row:
             + " End of notes. The flag is green."
         ),
         "questions": {f"flag_{i}": question for i in range(question_count)},
+    }
+
+
+# Three siblings of the same shape over the same state. Only the noun changes,
+# so the batch composition, the token count, and every position are identical
+# and the single thing that varies is the content of cells the target question
+# must not be able to attend to. "flag" additionally contradicts the state and
+# names the answer the target must not give, so a mask that leaked a sibling's
+# remainder would move it far past the "wall"/"door" noise floor.
+CONTAMINATION_NOUNS = ("wall", "door", "flag")
+# Each noun set is run in both question orders. Target first exercises only
+# leakage from later batch slots and higher positions into earlier ones; target
+# last exercises the other direction, which is where a mask that unmasks every
+# preceding cell regardless of sequence id would show up.
+CONTAMINATION_ORDERS = ("target_first", "target_last")
+CONTAMINATION_TARGET = "flag_0"
+
+
+def contamination_payload(noun: str, order: str, padding_words: int = 384) -> Row:
+    sentence = f" The {noun} is red."
+    target = {
+        "type": "choice",
+        "instructions": "Choose the explicitly stated flag color.",
+        "criteria": {"green": "green", "red": "red"},
+    }
+    sibling = {
+        "type": "noul",
+        "instructions": ("Colour report:" + sentence * 24).strip(),
+    }
+    questions = (
+        {CONTAMINATION_TARGET: target, "sibling": sibling}
+        if order == "target_first"
+        else {"sibling": sibling, CONTAMINATION_TARGET: target}
+    )
+    return {
+        "model": MODEL_ID,
+        "state": (
+            "The flag is green. Background notes follow:"
+            + " note" * padding_words
+            + " End of notes. The flag is green."
+        ),
+        "questions": questions,
+    }
+
+
+def fallback_payload(questions: int = 6, padding_words: int = 1400) -> Row:
+    """A request whose KV cells exceed the default batched context.
+
+    Each prompt stays well under the 2048-token per-question limit, but the
+    per-question instructions are long and distinct, so prefix + the sum of the
+    remainders passes 8192 cells and a batched worker must decline to batch it.
+    """
+    return {
+        "model": MODEL_ID,
+        "state": (
+            "The flag is green. Background notes follow:"
+            + " note" * 300
+            + " End of notes. The flag is green."
+        ),
+        "questions": {
+            f"flag_{index}": {
+                "type": "choice",
+                "instructions": (
+                    "Choose the explicitly stated flag color. Context:"
+                    + " note" * padding_words
+                    + f" Question {index}."
+                ),
+                "criteria": {"green": "green", "red": "red"},
+            }
+            for index in range(questions)
+        },
     }
 
 
@@ -336,6 +459,10 @@ async def run(args: argparse.Namespace) -> None:
         "started_unix": time.time(),
         "tolerance": TOLERANCE,
         "questions": sum(len(case["questions"]) for case in fixtures["cases"]),
+        "batched": bool(args.batched),
+        # A sequential worker has no batched cache: recording the unused default
+        # here would misattribute this run's VRAM figure.
+        "batched_context": args.batched_context if args.batched else 0,
     }
     write_json(args.out / "run.json", manifest)
     config = ApiConfig(
@@ -343,12 +470,18 @@ async def run(args: argparse.Namespace) -> None:
         worker_path=args.worker,
         manifest_path=args.manifest,
         gpu=True,
+        batched=bool(args.batched),
+        batched_context=args.batched_context,
     )
+    # Sequential mode asserts that a question is computed the same way whatever
+    # its siblings are. Batched mode records the same comparisons instead.
+    strict = not args.batched
     app = create_app(config)
     records: list[Row] = []
     quality: list[Row] = []
     isolation: list[Row] = []
     benchmarks: list[Row] = []
+    contamination: list[Row] = []
     worker_pid: int | None = None
     memory_samples: list[Row] = []
     stop_sampling = asyncio.Event()
@@ -397,7 +530,7 @@ async def run(args: argparse.Namespace) -> None:
         )
         if response.status_code == 200:
             audit_response(payload, body)
-            audit_diagnostics(payload, body, model_hash)
+            audit_diagnostics(payload, body, model_hash, batched=bool(args.batched))
         else:
             assert isinstance(body["error"]["code"], str)
             assert isinstance(body["error"]["message"], str)
@@ -498,9 +631,13 @@ async def run(args: argparse.Namespace) -> None:
                             client, case["id"] + "/solo/" + key, solo_payload
                         )
                         delta = compare_distributions(
-                            {key: left[key]}, audit_response(solo_payload, solo)
+                            {key: left[key]},
+                            audit_response(solo_payload, solo),
+                            strict=strict,
                         )
-                        raw_delta = compare_diagnostics(mixed, solo, {key: key})
+                        raw_delta = compare_diagnostics(
+                            mixed, solo, {key: key}, strict=strict
+                        )
                         isolation.append(
                             {
                                 "case": case["id"],
@@ -517,10 +654,15 @@ async def run(args: argparse.Namespace) -> None:
                         client, case["id"] + "/reversed", reversed_payload
                     )
                     delta = compare_distributions(
-                        left, audit_response(reversed_payload, reversed_result)
+                        left,
+                        audit_response(reversed_payload, reversed_result),
+                        strict=strict,
                     )
                     raw_delta = compare_diagnostics(
-                        mixed, reversed_result, {key: key for key in left}
+                        mixed,
+                        reversed_result,
+                        {key: key for key in left},
+                        strict=strict,
                     )
                     isolation.append(
                         {
@@ -542,9 +684,14 @@ async def run(args: argparse.Namespace) -> None:
                         client, case["id"] + "/renamed", renamed_payload
                     )
                     delta = compare_distributions(
-                        left, audit_response(renamed_payload, renamed_result), renamed
+                        left,
+                        audit_response(renamed_payload, renamed_result),
+                        renamed,
+                        strict=strict,
                     )
-                    raw_delta = compare_diagnostics(mixed, renamed_result, renamed)
+                    raw_delta = compare_diagnostics(
+                        mixed, renamed_result, renamed, strict=strict
+                    )
                     isolation.append(
                         {
                             "case": case["id"],
@@ -573,6 +720,148 @@ async def run(args: argparse.Namespace) -> None:
                             "raw_logit_delta": raw_delta,
                         }
                     )
+
+                # Cross-question contamination probe. Requests of the same shape
+                # whose only difference is the content of a sibling's remainder;
+                # "flag" is the one that contradicts the state. Run in both
+                # question orders, so the target is once the first sequence in
+                # the batch and once the last.
+                for order in CONTAMINATION_ORDERS:
+                    probes: dict[str, tuple[Row, Row]] = {}
+                    for noun in CONTAMINATION_NOUNS:
+                        probe_payload = contamination_payload(noun, order)
+                        probe = await request(
+                            client, f"contamination/{order}/{noun}", probe_payload
+                        )
+                        audit_contamination_regime(
+                            probe_payload,
+                            probe,
+                            batched=bool(args.batched),
+                            label=f"{order}/{noun}",
+                        )
+                        probes[noun] = (probe_payload, probe)
+                    lengths = {
+                        noun: [
+                            body["diagnostics"][key]["prompt_tokens"]
+                            for key in payload["questions"]
+                        ]
+                        for noun, (payload, body) in probes.items()
+                    }
+                    # Equal token counts are what make this a content-only
+                    # contrast: same batch shape, same ubatch split, same
+                    # positions, different bytes in the sibling's own cells.
+                    assert len({tuple(value) for value in lengths.values()}) == 1, (
+                        order,
+                        lengths,
+                    )
+                    answers = {
+                        noun: body["answers"][CONTAMINATION_TARGET]["choice"]
+                        for noun, (_, body) in probes.items()
+                    }
+                    # The target question must give the state's answer whatever
+                    # a sibling asserts.
+                    assert set(answers.values()) == {"green"}, (order, answers)
+                    pairs: list[Row] = []
+                    for left_noun, right_noun in (
+                        ("wall", "door"),
+                        ("wall", "flag"),
+                        ("door", "flag"),
+                    ):
+                        left_payload, left_body = probes[left_noun]
+                        right_payload, right_body = probes[right_noun]
+                        pairs.append(
+                            {
+                                "order": order,
+                                "pair": f"{left_noun}-{right_noun}",
+                                "role": (
+                                    "noise_floor"
+                                    if "flag" not in (left_noun, right_noun)
+                                    else "adversarial"
+                                ),
+                                "prompt_tokens": lengths[left_noun],
+                                "delta": compare_distributions(
+                                    {
+                                        CONTAMINATION_TARGET: audit_response(
+                                            left_payload, left_body
+                                        )[CONTAMINATION_TARGET]
+                                    },
+                                    audit_response(right_payload, right_body),
+                                    {CONTAMINATION_TARGET: CONTAMINATION_TARGET},
+                                    strict=False,
+                                ),
+                                "raw_logit_delta": compare_diagnostics(
+                                    left_body,
+                                    right_body,
+                                    {CONTAMINATION_TARGET: CONTAMINATION_TARGET},
+                                    strict=False,
+                                ),
+                            }
+                        )
+                    # The check, not just the measurement: swapping in the
+                    # sibling that contradicts the state must not move the target
+                    # further than swapping in an equally long irrelevant one.
+                    # A mask that let the target attend to a sibling's remainder
+                    # would have to move the green/red logits past that floor.
+                    floors = {
+                        field: max(
+                            row[field] for row in pairs if row["role"] == "noise_floor"
+                        )
+                        for field in ("delta", "raw_logit_delta")
+                    }
+                    for row in pairs:
+                        if row["role"] != "adversarial":
+                            continue
+                        for field, floor in floors.items():
+                            assert row[field] <= max(floor, TOLERANCE), (
+                                order,
+                                row["pair"],
+                                field,
+                                row[field],
+                                floor,
+                            )
+                    contamination.extend(pairs)
+
+                # A request too large for the batched cache. A batched worker
+                # must decline to batch it, say so, and answer it sequentially;
+                # a sequential worker just answers it. Both runs record the
+                # answers, so the two can be compared afterwards.
+                oversize_payload = fallback_payload()
+                oversize = await request(client, "fallback/oversize", oversize_payload)
+                oversize_scores = audit_response(oversize_payload, oversize)
+                oversize_modes = {
+                    detail["evaluation_mode"]
+                    for detail in oversize["diagnostics"].values()
+                }
+                # Prefix charged once plus every remainder: exactly the cells a
+                # batched evaluation of this request would need.
+                oversize_cells = sum(
+                    detail["processed_tokens"]
+                    for detail in oversize["diagnostics"].values()
+                )
+                if args.batched:
+                    assert oversize["evaluation"] == {
+                        "mode": "sequential",
+                        "fallback": "context",
+                    }, oversize["evaluation"]
+                    assert oversize_cells > args.batched_context, oversize_cells
+                else:
+                    assert "evaluation" not in oversize
+                assert oversize_modes == {"sequential"}, oversize_modes
+                fallback_record = {
+                    "questions": len(oversize_payload["questions"]),
+                    "kv_cells": oversize_cells,
+                    "batched_context": args.batched_context if args.batched else 0,
+                    "evaluation": oversize.get("evaluation"),
+                    "prompt_tokens": {
+                        key: detail["prompt_tokens"]
+                        for key, detail in oversize["diagnostics"].items()
+                    },
+                    "probabilities": oversize_scores,
+                    "raw_label_logits": {
+                        key: detail["raw_label_logits"]
+                        for key, detail in oversize["diagnostics"].items()
+                    },
+                }
 
                 overlap_payload = benchmark_payload(question_count=4, padding_words=896)
                 overlap_start = len(records)
@@ -684,13 +973,84 @@ async def run(args: argparse.Namespace) -> None:
                 "results": quality,
             },
             "isolation": {
+                "asserted_exactly_zero": bool(strict),
                 "comparisons": len(isolation),
                 "maximum_probability_delta": max(row["delta"] for row in isolation),
                 "maximum_raw_logit_delta": max(
                     row["raw_logit_delta"] for row in isolation
                 ),
+                "by_variant": {
+                    variant: {
+                        "n": len(group),
+                        "maximum_probability_delta": max(row["delta"] for row in group),
+                        "maximum_raw_logit_delta": max(
+                            row["raw_logit_delta"] for row in group
+                        ),
+                        "nonzero": sum(row["delta"] > 0.0 for row in group),
+                    }
+                    for variant in ("solo", "reversed", "renamed", "repeat")
+                    if (
+                        group := [row for row in isolation if row["variant"] == variant]
+                    )
+                },
                 "results": isolation,
             },
+            "contamination": {
+                "design": (
+                    "Two-question requests over one state that says the flag is "
+                    "green. The sibling repeats 'The wall is red', 'The door is "
+                    "red', or 'The flag is red' at the same token count, so "
+                    "batch shape and positions are identical and only content "
+                    "the target question must not see changes. The wall/door "
+                    "pair is the noise floor; a pair containing flag is the "
+                    "adversarial contrast. Each noun set runs in both question "
+                    "orders, so the target is once the first sequence in the "
+                    "batch and once the last."
+                ),
+                "asserted": (
+                    "adversarial delta <= max(noise floor, tolerance) for "
+                    "probabilities and raw logits, in each order, and the "
+                    "target answer is 'green' in every probe"
+                ),
+                "by_order": {
+                    order: {
+                        role: {
+                            "n": len(group),
+                            "delta": max(row["delta"] for row in group),
+                            "raw_logit_delta": max(
+                                row["raw_logit_delta"] for row in group
+                            ),
+                        }
+                        for role in ("noise_floor", "adversarial")
+                        if (
+                            group := [
+                                row
+                                for row in contamination
+                                if row["order"] == order and row["role"] == role
+                            ]
+                        )
+                    }
+                    for order in CONTAMINATION_ORDERS
+                },
+                "noise_floor_delta": max(
+                    (
+                        row["delta"]
+                        for row in contamination
+                        if row["role"] == "noise_floor"
+                    ),
+                    default=None,
+                ),
+                "adversarial_delta": max(
+                    (
+                        row["delta"]
+                        for row in contamination
+                        if row["role"] == "adversarial"
+                    ),
+                    default=None,
+                ),
+                "results": contamination,
+            },
+            "batched_fallback": fallback_record,
             "requests": len(records),
             "rejected_requests": sum(row["status"] != 200 for row in records),
             "generated_tokens": sum(
@@ -789,6 +1149,17 @@ def main() -> None:
         help="also append native worker debug lines to this file",
     )
     parser.add_argument("--allow-gpu", action="store_true")
+    parser.add_argument(
+        "--batched",
+        action="store_true",
+        help="run the opt-in batched evaluation mode (ADR 0004)",
+    )
+    parser.add_argument(
+        "--batched-context",
+        type=int,
+        default=8192,
+        help="KV cells a batched worker reserves, about 0.21 MiB each",
+    )
     args = parser.parse_args()
     if not args.allow_gpu:
         parser.error("Explicit --allow-gpu is required")
