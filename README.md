@@ -282,8 +282,13 @@ v0.4.1 is reported separately rather than written over them.
 - Opt-in batched evaluation: the same suites and harness with every question of
   a request in one decode, against the sequential default on the same worker.
   [docs/results/batched-mode.md](docs/results/batched-mode.md)
+- Against the same model used generatively: llama-bench prefill and decode
+  figures for the identical GGUF, and what they imply for one question and for
+  eight questions over one document.
+  [docs/whitepaper.md](docs/whitepaper.md)
 
-Further reading: [docs/architecture.md](docs/architecture.md) for the process
+Further reading: [docs/whitepaper.md](docs/whitepaper.md) for the whole
+story in one place, [docs/architecture.md](docs/architecture.md) for the process
 model and protocol, [docs/usecase-suites.md](docs/usecase-suites.md) for the
 suites and how to run them, and [docs/decisions/](docs/decisions/) for the four
 decision records that shape v1.
