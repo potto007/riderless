@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from riderless.api.backend import (
 )
 from riderless.api.compiler import CompiledBatch, compile_request
 from riderless.api.native.build import TESTED_LLAMA_REVISION
+from riderless.api.native.bundle import MANIFEST_SCHEMA_VERSION
 from riderless.api.native_backend import NativeBackend
 from riderless.api.schema import BackendProfile, DecisionRequest
 
@@ -30,20 +32,24 @@ def _fake_install(
     tmp_path: Path,
     mode: str = "normal",
     revision: str = TESTED_LLAMA_REVISION,
+    schema_version: int = MANIFEST_SCHEMA_VERSION,
 ) -> tuple[Path, Path, Path]:
     worker = tmp_path / "worker"
     worker.write_text(
         """#!/usr/bin/env python3
-import argparse, hashlib, json, sys, time
+import argparse, hashlib, json, os, sys, time
 p=argparse.ArgumentParser()
 p.add_argument('--model'); p.add_argument('--model-sha256')
-p.add_argument('--runtime-sha256'); p.add_argument('--context', type=int)
+p.add_argument('--runtime-sha256'); p.add_argument('--runtime-dir', required=True)
+p.add_argument('--context', type=int)
 p.add_argument('--batch', type=int); p.add_argument('--ubatch', type=int)
 p.add_argument('--threads', type=int); p.add_argument('--max-questions', type=int)
 p.add_argument('--gpu', action='store_true')
 p.add_argument('--batched', action='store_true')
 p.add_argument('--batched-context', type=int, default=0)
 a=p.parse_args()
+# The real worker dlopens its backends from here, so a wrong path is fatal.
+if not os.path.isdir(a.runtime_dir): sys.exit('runtime-dir is not a directory')
 labels=['A','B','C']; token_ids=[11,12,13]
 print(json.dumps({'type':'hello','protocol_version':3,
  'model_id':'local-gemma-riderless-v1','model_name':'fixture',
@@ -102,19 +108,22 @@ for line in sys.stdin:
     library.write_bytes(b"runtime")
     checksums = {library.name: _digest(library)}
     manifest = tmp_path / "build.json"
+    # Schema 2 names both paths relative to the manifest; schema 1 is the old
+    # absolute form, still read so a pre-0.2.0 install keeps starting.
+    relative = schema_version == MANIFEST_SCHEMA_VERSION
     manifest.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": schema_version,
                 "llama_revision": revision,
-                "runtime_dir": str(runtime),
+                "runtime_dir": runtime.name if relative else str(runtime),
                 "runtime_sha256": checksums,
                 "runtime_bundle_sha256": hashlib.sha256(
                     json.dumps(
                         checksums, sort_keys=True, separators=(",", ":")
                     ).encode()
                 ).hexdigest(),
-                "executable": str(worker),
+                "executable": worker.name if relative else str(worker),
                 "executable_sha256": _digest(worker),
                 "generated_tokens": 0,
                 "callbacks_enabled": False,
@@ -358,7 +367,8 @@ async def test_corrupted_manifest_is_still_refused(
     recorded = json.loads(manifest.read_text())
     if corruption == "runtime":
         # The library on disk is no longer the one the manifest vouched for.
-        (Path(recorded["runtime_dir"]) / "libfixture.so").write_bytes(b"tampered")
+        runtime = manifest.parent / recorded["runtime_dir"]
+        (runtime / "libfixture.so").write_bytes(b"tampered")
     elif corruption == "executable":
         recorded["executable_sha256"] = "0" * 64
         manifest.write_text(json.dumps(recorded))
@@ -378,6 +388,86 @@ async def test_corrupted_manifest_is_still_refused(
 
     assert backend.pid is None
     assert backend.ready is False
+
+
+@pytest.mark.asyncio
+async def test_a_relocatable_install_verifies_after_it_is_moved(
+    tmp_path: Path,
+) -> None:
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _fake_install(origin)
+    # Nothing in the manifest names `origin`, so the whole directory moves.
+    moved = tmp_path / "moved"
+    shutil.move(origin, moved)
+    backend = NativeBackend(
+        worker_path=moved / "worker",
+        model_path=moved / "model.gguf",
+        manifest_path=moved / "build.json",
+        startup_timeout=2.0,
+    )
+
+    profile = await backend.start()
+    result = await backend.evaluate(_batch(profile), timeout=2.0)
+    await backend.close()
+
+    assert "origin" not in (moved / "build.json").read_text()
+    assert result.questions[0].id == "q"
+
+
+@pytest.mark.asyncio
+async def test_an_absolute_schema_1_install_still_starts(tmp_path: Path) -> None:
+    worker, model, manifest = _fake_install(tmp_path, schema_version=1)
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    profile = await backend.start()
+    result = await backend.evaluate(_batch(profile), timeout=2.0)
+    await backend.close()
+
+    assert json.loads(manifest.read_text())["schema_version"] == 1
+    assert result.questions[0].id == "q"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["executable", "runtime_dir"])
+async def test_an_absolute_path_in_a_relocatable_manifest_is_refused(
+    tmp_path: Path, field: str
+) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    recorded = json.loads(manifest.read_text())
+    recorded[field] = str(manifest.parent / recorded[field])
+    manifest.write_text(json.dumps(recorded))
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    with pytest.raises(BackendUnavailableError):
+        await backend.start()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_manifest_schema_is_refused(tmp_path: Path) -> None:
+    worker, model, manifest = _fake_install(tmp_path)
+    recorded = json.loads(manifest.read_text())
+    recorded["schema_version"] = MANIFEST_SCHEMA_VERSION + 1
+    manifest.write_text(json.dumps(recorded))
+    backend = NativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        startup_timeout=2.0,
+    )
+
+    with pytest.raises(BackendUnavailableError):
+        await backend.start()
 
 
 @pytest.mark.asyncio
