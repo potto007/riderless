@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 36 1000 530" width="1000" height="530" role="img" aria-labelledby="title desc">
+<title id="title">How a decision surfaces in riderless</title>
+<desc id="desc">A request with one state and several questions is compiled into one prompt per question with options labelled A, B, C. The worker prefills the prompt, reads the last-position logits at the label token ids only, and generates no tokens. A softmax over those labels gives the probabilities, which become a Choice (argmax), a Score (expected level) or a Noul (probability of true).</desc>
+
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; font-size: 11px; }
+  .h { font-size: 14px; font-weight: 600; }
+  .num { fill: #0969da; font-weight: 700; }
+  .sub { fill: #59636e; font-size: 10.5px; font-weight: 400; }
+  .cap { fill: #59636e; font-size: 9.5px; letter-spacing: 0.08em; font-weight: 600; }
+  .note { fill: #59636e; font-size: 10.5px; }
+  .src { fill: #818b98; font-size: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .mono, .pmono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .mono { font-size: 10.5px; }
+  .pmono { font-size: 9.5px; }
+  .b { font-weight: 600; }
+  .tag { fill: #59636e; font-size: 9.5px; }
+  .lab { fill: #0969da; font-weight: 700; }
+  .caret { fill: #0969da; }
+  .good { fill: #1a7f37; }
+  .panel { fill: #f6f8fa; stroke: #d1d9e0; }
+  .box, .card { fill: #ffffff; stroke: #d1d9e0; }
+  .card.hot { fill: #ddf4ff; stroke: #0969da; stroke-width: 1.5; }
+  .model { fill: #ffffff; stroke: #0969da; stroke-width: 1.5; }
+  .shared { fill: #fff8c5; }
+  .rule { stroke: #d1d9e0; }
+  .arrow { stroke: #818b98; stroke-width: 1.5; fill: none; }
+  #ah path { fill: #818b98; }
+  .vbar { fill: #c8d1da; }
+  .lbar, .pbar { fill: #0969da; }
+  .track { fill: #e6eaef; }
+  .badge { fill: #dafbe1; stroke: #1a7f37; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #e6edf3; }
+    .num, .lab, .caret { fill: #4493f8; }
+    .sub, .cap, .note, .tag { fill: #9198a1; }
+    .src { fill: #656c76; }
+    .good { fill: #3fb950; }
+    .panel { fill: #151b23; stroke: #3d444d; }
+    .box, .card { fill: #0d1117; stroke: #3d444d; }
+    .card.hot { fill: #0c2d6b; stroke: #4493f8; }
+    .model { fill: #0d1117; stroke: #4493f8; }
+    .shared { fill: #3b2e0a; }
+    .rule { stroke: #3d444d; }
+    .arrow { stroke: #656c76; }
+    #ah path { fill: #656c76; }
+    .vbar { fill: #3d444d; }
+    .lbar, .pbar { fill: #4493f8; }
+    .track { fill: #262c36; }
+    .badge { fill: #0f2a19; stroke: #3fb950; }
+  }
+</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line x1="247" y1="300" x2="262" y2="300" class="arrow" marker-end="url(#ah)"/>
+<line x1="492" y1="300" x2="507" y2="300" class="arrow" marker-end="url(#ah)"/>
+<line x1="737" y1="300" x2="752" y2="300" class="arrow" marker-end="url(#ah)"/>
+<rect x="20" y="50" width="225" height="500" rx="10" class="panel"/>
+<text x="34" y="78" class="h"><tspan class="num">1</tspan>  Request</text>
+<text x="34" y="96" class="sub">one state, up to 32 questions</text>
+<text x="34" y="538" class="src">riderless/api/schema.py</text>
+<text x="32" y="126" class="cap">STATE</text>
+<rect x="32" y="134" width="201" height="80" rx="6" class="box"/>
+<text x="42" y="152" class="mono">from: "customer"</text>
+<text x="42" y="170" class="body">&quot;I was charged twice for the</text>
+<text x="42" y="185" class="body">same order on Tuesday. ...</text>
+<text x="42" y="200" class="body">Please refund one of them.&quot;</text>
+<text x="32" y="240" class="cap">QUESTIONS</text>
+<rect x="32" y="248" width="201" height="48" rx="6" class="card hot"/>
+<text x="42" y="267" class="mono b">route</text>
+<text x="223" y="267" class="tag" text-anchor="end">choice</text>
+<text x="42" y="285" class="body">billing · technical · sales</text>
+<rect x="32" y="304" width="201" height="48" rx="6" class="card"/>
+<text x="42" y="323" class="mono b">urgency</text>
+<text x="223" y="323" class="tag" text-anchor="end">score</text>
+<text x="42" y="341" class="body">low · medium · high</text>
+<rect x="32" y="360" width="201" height="48" rx="6" class="card"/>
+<text x="42" y="379" class="mono b">duplicate_charge</text>
+<text x="223" y="379" class="tag" text-anchor="end">noul</text>
+<text x="42" y="397" class="body">true / false</text>
+<text x="32" y="438" class="note">Each question is compiled on its</text>
+<text x="32" y="453" class="note">own and never sees its siblings.</text>
+<text x="32" y="468" class="note">Follow route; the other two take</text>
+<text x="32" y="483" class="note">the same path.</text>
+<rect x="265" y="50" width="225" height="500" rx="10" class="panel"/>
+<text x="279" y="78" class="h"><tspan class="num">2</tspan>  Compile</text>
+<text x="279" y="96" class="sub">one prompt per question</text>
+<text x="279" y="538" class="src">riderless/api/compiler.py</text>
+<rect x="277" y="110" width="201" height="350" rx="6" class="box"/>
+<rect x="281" y="117" width="193" height="119.0" rx="4" class="shared"/>
+<text x="287" y="128.0" class="pmono">Use the supplied state to</text>
+<text x="287" y="142.5" class="pmono">answer one finite decision ...</text>
+<text x="287" y="157.0" class="pmono"></text>
+<text x="287" y="171.5" class="pmono">STATE:</text>
+<text x="287" y="186.0" class="pmono">{&quot;from&quot;:&quot;customer&quot;,</text>
+<text x="287" y="200.5" class="pmono">&quot;message&quot;:&quot;I was charged ...&quot;}</text>
+<text x="287" y="215.0" class="pmono"></text>
+<text x="287" y="229.5" class="pmono">QUESTION:</text>
+<text x="287" y="244.0" class="pmono">Choose the single best option</text>
+<text x="287" y="258.5" class="pmono">for the state.</text>
+<text x="287" y="273.0" class="pmono"></text>
+<text x="287" y="287.5" class="pmono">INSTRUCTIONS:</text>
+<text x="287" y="302.0" class="pmono">Choose the team that should ...</text>
+<text x="287" y="316.5" class="pmono"></text>
+<text x="287" y="331.0" class="pmono">OPTIONS:</text>
+<text x="287" y="345.5" class="pmono"><tspan class="lab">A</tspan>: billing - Charges, refu...</text>
+<text x="287" y="360.0" class="pmono"><tspan class="lab">B</tspan>: technical - A defect in ...</text>
+<text x="287" y="374.5" class="pmono"><tspan class="lab">C</tspan>: sales - A question abou...</text>
+<text x="287" y="389.0" class="pmono"></text>
+<text x="287" y="403.5" class="pmono">Reply with one option label</text>
+<text x="287" y="418.0" class="pmono">only.</text>
+<line x1="285" y1="428.5" x2="470" y2="428.5" class="rule"/>
+<text x="287" y="444.5" class="pmono b">Answer:<tspan class="caret"> ▌</tspan></text>
+<text x="470" y="444.5" class="tag" text-anchor="end">model turn</text>
+<text x="277" y="480" class="note">Shaded: system line and state,</text>
+<text x="277" y="495" class="note">prefilled once per request and</text>
+<text x="277" y="510" class="note">reused by each later question.</text>
+<rect x="510" y="50" width="225" height="500" rx="10" class="panel"/>
+<text x="524" y="78" class="h"><tspan class="num">3</tspan>  Prefill, read logits</text>
+<text x="524" y="96" class="sub">full depth, no decode</text>
+<text x="524" y="538" class="src">riderless/api/native/worker.cpp</text>
+<rect x="522" y="110" width="201" height="58" rx="8" class="model"/>
+<text x="622" y="134" class="b" text-anchor="middle">Gemma 4 26B-A4B</text>
+<text x="622" y="153" class="sub" text-anchor="middle">llama.cpp prefill of the prompt</text>
+<line x1="622" y1="170" x2="622" y2="196" class="arrow" marker-end="url(#ah)"/>
+<text x="622" y="214" class="sub" text-anchor="middle">logits at the last position,</text>
+<text x="622" y="228" class="sub" text-anchor="middle">one per vocabulary token</text>
+<line x1="526" y1="330" x2="716.8" y2="330" class="rule"/>
+<rect x="530.0" y="304" width="2" height="26" rx="0.5" class="vbar"/>
+<rect x="533.3" y="315" width="2" height="15" rx="0.5" class="vbar"/>
+<rect x="536.6" y="299" width="2" height="31" rx="0.5" class="vbar"/>
+<rect x="539.9" y="321" width="2" height="9" rx="0.5" class="vbar"/>
+<rect x="543.2" y="320" width="2" height="10" rx="0.5" class="vbar"/>
+<rect x="546.5" y="290" width="2" height="40" rx="0.5" class="vbar"/>
+<rect x="549.8" y="318" width="2" height="12" rx="0.5" class="vbar"/>
+<rect x="553.1" y="301" width="2" height="29" rx="0.5" class="vbar"/>
+<rect x="556.4" y="287" width="2" height="43" rx="0.5" class="vbar"/>
+<rect x="559.7" y="321" width="2" height="9" rx="0.5" class="vbar"/>
+<rect x="563.0" y="292" width="2" height="38" rx="0.5" class="vbar"/>
+<rect x="566.3" y="311" width="2" height="19" rx="0.5" class="vbar"/>
+<rect x="569.1" y="246" width="3" height="84" rx="0.5" class="lbar"/>
+<text x="570.6" y="346" class="lab" text-anchor="middle">A</text>
+<rect x="572.9" y="322" width="2" height="8" rx="0.5" class="vbar"/>
+<rect x="576.2" y="319" width="2" height="11" rx="0.5" class="vbar"/>
+<rect x="579.5" y="297" width="2" height="33" rx="0.5" class="vbar"/>
+<rect x="582.8" y="298" width="2" height="32" rx="0.5" class="vbar"/>
+<rect x="586.1" y="320" width="2" height="10" rx="0.5" class="vbar"/>
+<rect x="589.4" y="309" width="2" height="21" rx="0.5" class="vbar"/>
+<rect x="592.7" y="319" width="2" height="11" rx="0.5" class="vbar"/>
+<rect x="596.0" y="289" width="2" height="41" rx="0.5" class="vbar"/>
+<rect x="599.3" y="297" width="2" height="33" rx="0.5" class="vbar"/>
+<rect x="602.6" y="321" width="2" height="9" rx="0.5" class="vbar"/>
+<rect x="605.9" y="288" width="2" height="42" rx="0.5" class="vbar"/>
+<rect x="609.2" y="317" width="2" height="13" rx="0.5" class="vbar"/>
+<rect x="612.5" y="310" width="2" height="20" rx="0.5" class="vbar"/>
+<rect x="615.8" y="284" width="2" height="46" rx="0.5" class="vbar"/>
+<rect x="619.1" y="284" width="2" height="46" rx="0.5" class="vbar"/>
+<rect x="622.4" y="287" width="2" height="43" rx="0.5" class="vbar"/>
+<rect x="625.7" y="321" width="2" height="9" rx="0.5" class="vbar"/>
+<rect x="629.0" y="288" width="2" height="42" rx="0.5" class="vbar"/>
+<rect x="631.8" y="296" width="3" height="34" rx="0.5" class="lbar"/>
+<text x="633.3" y="346" class="lab" text-anchor="middle">B</text>
+<rect x="635.6" y="287" width="2" height="43" rx="0.5" class="vbar"/>
+<rect x="638.9" y="299" width="2" height="31" rx="0.5" class="vbar"/>
+<rect x="642.2" y="321" width="2" height="9" rx="0.5" class="vbar"/>
+<rect x="645.5" y="310" width="2" height="20" rx="0.5" class="vbar"/>
+<rect x="648.8" y="322" width="2" height="8" rx="0.5" class="vbar"/>
+<rect x="652.1" y="289" width="2" height="41" rx="0.5" class="vbar"/>
+<rect x="655.4" y="316" width="2" height="14" rx="0.5" class="vbar"/>
+<rect x="658.7" y="306" width="2" height="24" rx="0.5" class="vbar"/>
+<rect x="662.0" y="298" width="2" height="32" rx="0.5" class="vbar"/>
+<rect x="665.3" y="315" width="2" height="15" rx="0.5" class="vbar"/>
+<rect x="668.6" y="290" width="2" height="40" rx="0.5" class="vbar"/>
+<rect x="671.9" y="317" width="2" height="13" rx="0.5" class="vbar"/>
+<rect x="675.2" y="288" width="2" height="42" rx="0.5" class="vbar"/>
+<rect x="678.0" y="306" width="3" height="24" rx="0.5" class="lbar"/>
+<text x="679.5" y="346" class="lab" text-anchor="middle">C</text>
+<rect x="681.8" y="305" width="2" height="25" rx="0.5" class="vbar"/>
+<rect x="685.1" y="289" width="2" height="41" rx="0.5" class="vbar"/>
+<rect x="688.4" y="313" width="2" height="17" rx="0.5" class="vbar"/>
+<rect x="691.7" y="318" width="2" height="12" rx="0.5" class="vbar"/>
+<rect x="695.0" y="287" width="2" height="43" rx="0.5" class="vbar"/>
+<rect x="698.3" y="288" width="2" height="42" rx="0.5" class="vbar"/>
+<rect x="701.6" y="284" width="2" height="46" rx="0.5" class="vbar"/>
+<rect x="704.9" y="312" width="2" height="18" rx="0.5" class="vbar"/>
+<rect x="708.2" y="301" width="2" height="29" rx="0.5" class="vbar"/>
+<rect x="711.5" y="318" width="2" height="12" rx="0.5" class="vbar"/>
+<text x="524" y="326" class="sub" text-anchor="end">...</text>
+<text x="522" y="378" class="note">Keep only the logits at the token</text>
+<text x="522" y="393" class="note">ids of A, B, C. Each id is checked</text>
+<text x="522" y="408" class="note">against this prompt, so a label</text>
+<text x="522" y="423" class="note">that tokenizes differently fails</text>
+<text x="522" y="438" class="note">instead of reading the wrong slot.</text>
+<rect x="522" y="462" width="201" height="44" rx="6" class="badge"/>
+<text x="622" y="480" class="b good" text-anchor="middle">no sampler · no answer token</text>
+<text x="622" y="496" class="sub" text-anchor="middle">0 generated tokens</text>
+<rect x="755" y="50" width="225" height="500" rx="10" class="panel"/>
+<text x="769" y="78" class="h"><tspan class="num">4</tspan>  Softmax, then type</text>
+<text x="769" y="96" class="sub">over the supplied labels only</text>
+<text x="769" y="538" class="src">riderless/api/mapping.py</text>
+<text x="767" y="128" class="pmono"><tspan class="lab">A</tspan> billing</text>
+<rect x="853" y="119" width="70" height="10" rx="2" class="track"/>
+<rect x="853" y="119" width="70.0" height="10" rx="2" class="pbar"/>
+<text x="968" y="128" class="pmono" text-anchor="end">≈1.0</text>
+<text x="767" y="152" class="pmono"><tspan class="lab">B</tspan> technical</text>
+<rect x="853" y="143" width="70" height="10" rx="2" class="track"/>
+<rect x="853" y="143" width="1.5" height="10" rx="0" class="pbar"/>
+<text x="968" y="152" class="pmono" text-anchor="end">2.2e-8</text>
+<text x="767" y="176" class="pmono"><tspan class="lab">C</tspan> sales</text>
+<rect x="853" y="167" width="70" height="10" rx="2" class="track"/>
+<rect x="853" y="167" width="1.5" height="10" rx="0" class="pbar"/>
+<text x="968" y="176" class="pmono" text-anchor="end">1.3e-9</text>
+<text x="767" y="208" class="note">p = softmax(logit A, B, C)</text>
+<rect x="767" y="226" width="201" height="64" rx="6" class="card"/>
+<text x="777" y="245" class="b">Choice <tspan class="sub">→ argmax</tspan></text>
+<text x="777" y="263" class="mono">route: &quot;billing&quot;</text>
+<text x="777" y="280" class="tag">confidence = max p, uncalibrated</text>
+<rect x="767" y="298" width="201" height="64" rx="6" class="card"/>
+<text x="777" y="317" class="b">Score <tspan class="sub">→ Σ i · pᵢ</tspan></text>
+<text x="777" y="335" class="mono">urgency: 1.99998</text>
+<text x="777" y="352" class="tag">levels low=0, medium=1, high=2</text>
+<rect x="767" y="370" width="201" height="64" rx="6" class="card"/>
+<text x="777" y="389" class="b">Noul <tspan class="sub">→ P(A)</tspan></text>
+<text x="777" y="407" class="mono">duplicate_charge: 0.99999992</text>
+<text x="777" y="424" class="tag">options are A: true, B: false</text>
+<text x="767" y="460" class="note">Rejected, not answered, if the</text>
+<text x="767" y="475" class="note">worker generated a token or its</text>
+<text x="767" y="490" class="note">model or runtime hash changed.</text>
+</svg>

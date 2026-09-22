@@ -83,6 +83,8 @@ Noul needs instructions or a true/false rubric. `output_tokens` is always 0.
 
 ## How it works
 
+![A request is compiled into one prompt per question, the worker prefills it and reads the last-position logits at the A, B, C label tokens only, and a softmax over those labels becomes a Choice, Score or Noul answer](docs/images/decision-readout.svg)
+
 Each question is compiled into its own prompt from the state plus that
 question's own instructions and criteria, with its options labelled `A`, `B`,
 `C` and so on. The worker prefills that prompt and reads the final-position
