@@ -23,8 +23,12 @@ HTTP client  ->  FastAPI app (riderless/api/app.py)
   same thing around one batch.
 - **Exactly one child process.** `NativeBackend` spawns the worker executable
   with the model path, both provenance hashes, and the runtime sizes as
-  arguments, and sets `LD_LIBRARY_PATH` to the pinned runtime directory it
-  verified. `GPU` is an explicit opt-in flag; without it the worker runs on CPU.
+  arguments, passes the runtime directory it just verified as `--runtime-dir`,
+  and sets `LD_LIBRARY_PATH` to the same directory. The worker dlopens its ggml
+  backends from there, so it loads exactly the files the manifest vouched for;
+  `LD_LIBRARY_PATH` covers the libraries those pull in, whose own `DT_RUNPATH`
+  would otherwise point at the machine that built them. `GPU` is an explicit
+  opt-in flag; without it the worker runs on CPU.
 - **One request at a time.** `ApiService` holds a busy flag; a second concurrent
   request gets 429 without reaching the backend. The worker context is created
   with a single sequence.
@@ -220,22 +224,30 @@ helpers, which loads no model and does no GPU work.
 
 The resulting `build.json` records:
 
+- its own `schema_version`, which is 2 for a relocatable manifest,
 - the llama.cpp revision the base was built from, the ref that was asked for,
-  whether that is the tested revision, and the base build it linked against,
+  whether that is the tested revision, and the sha256 of the base build's own
+  manifest (its directory is deliberately not recorded: a bundle names no path
+  outside itself),
 - every runtime library hash plus a single bundle hash over all of them,
 - the source hashes of the worker sources and of the SHA-256 helper that the
   build compiles out of your llama.cpp checkout (no llama.cpp file is vendored
   in this repository),
-- the executable path and hash,
+- the executable and runtime directory, each relative to the manifest, and the
+  executable's hash,
 - the default runtime configuration (context, batch, ubatch, threads, attention
   type, fusion and graph flags) as a build record: these are the build's
   defaults, not a constraint on how the worker is later started,
 - the three invariants `generated_tokens: 0`, `callbacks_enabled: false`,
   `execution_mode: "full"`.
 
-At startup the backend rechecks the executable path and hash, every runtime file
-hash, the bundle hash, and those three invariants, and refuses to start on any
-mismatch. The invariants are checked against the handshake the
+At startup the backend resolves both paths against the manifest's own directory,
+rechecks that the executable is the one the manifest names, its hash, every
+runtime file hash, the bundle hash, and those three invariants, and refuses to
+start on any mismatch. Resolving against the manifest is what lets a bundle be
+unpacked anywhere and verify the same
+([ADR 0005](decisions/0005-relocatable-prebuilt-worker-bundles.md)); a schema 1
+manifest from before 0.2.0 keeps its absolute paths and is checked the same way. The invariants are checked against the handshake the
 worker reports for the flags the backend actually passed, not against the
 manifest's recorded `runtime_config`: starting with `--context 4096` leaves the
 manifest saying 2048 and raises no mismatch. The source and helper hashes are a
