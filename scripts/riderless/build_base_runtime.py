@@ -183,6 +183,11 @@ def configure(
         # whichever OpenSSL the user's distribution ships.
         "-DLLAMA_OPENSSL=OFF",
         f"-DGGML_CUDA={'ON' if cuda else 'OFF'}",
+        # One GPU, one process: NCCL buys nothing here, and when the build
+        # machine happens to have it (the NVIDIA devel containers do), ggml
+        # links libnccl.so.2 into the CUDA backend and every user would need
+        # it installed.
+        "-DGGML_CUDA_NCCL=OFF",
     ]
     if not native:
         # -march=native bakes the build machine's CPU into the libraries, which

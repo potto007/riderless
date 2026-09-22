@@ -106,8 +106,21 @@ jobs:
               --out build/llama-base --no-native
           fi
 
+      # The devel container has no NVIDIA driver. libggml-cuda's NEEDED entry
+      # is libcuda.so.1, and the linker resolves a shared library's undefined
+      # symbols when it links the worker, so it must find that soname. The
+      # toolkit ships only an unversioned stub, libcuda.so; a symlink under
+      # the soname plus -rpath-link (a link-time search path, recorded nowhere
+      # in the executable) lets the link finish. At runtime the real driver
+      # library provides the symbols.
       - name: Build the worker bundle
+        shell: bash
         run: |
+          if [ "${{ matrix.cuda }}" = "true" ]; then
+            stubs=/usr/local/cuda/lib64/stubs
+            [ -e "$stubs/libcuda.so.1" ] || ln -s libcuda.so "$stubs/libcuda.so.1"
+            export LDFLAGS="-Wl,-rpath-link,$stubs"
+          fi
           uv run --no-sync python -m riderless.api.native.build \
             --base build/llama-base --output build/api-worker
 
