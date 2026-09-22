@@ -216,10 +216,12 @@ One caveat on the published binaries: every number in `docs/results/` was
 measured on a native build for one GPU architecture. The release bundles are
 built with `GGML_NATIVE=OFF` and `CMAKE_CUDA_ARCHITECTURES=80;86;89;90;120`, a
 different compile, so a prebuilt worker is not promised to reproduce those runs
-bit for bit. Answers stay deterministic per configuration; they are not
-identical across configurations, which is the same caveat that already applies
-to batch size and llama.cpp revision. Build from source if you need the exact
-configuration the results pages describe.
+bit for bit. Measured for the 0.2.0 `cuda13` bundle on an RTX 5090: 10 of
+1,286 suite answers differ from the native reference run and overall accuracy
+is 0.928 against 0.931, which is the same band the batch-size and
+llama.cpp-revision controls already showed. Answers stay deterministic per
+configuration; they are not identical across configurations. Build from source
+if you need the exact configuration the results pages describe.
 
 ### Build details
 
