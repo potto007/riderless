@@ -111,6 +111,14 @@ is faster and gives up that sibling independence:
 [docs/decisions/0004](docs/decisions/0004-optional-batched-question-evaluation.md)
 and [docs/results/batched-mode.md](docs/results/batched-mode.md).
 
+Riderless always reads the full depth of the model. An earlier proof of concept
+exited at block 18 of 30 with a head trained for one three-class task, and fell
+back to a full pass below a confidence threshold. It was set aside for the
+general API ([ADR 0001](docs/decisions/0001-full-depth-label-readout-in-an-owned-child.md));
+the [whitepaper](docs/whitepaper.md) has the numbers.
+
+![Early-exit cascade from the earlier proof of concept, not part of riderless: blocks 1 to 18 and a trained head answer when the top probability is at least 0.71, otherwise a full-depth pass reads the label logits](docs/images/early-exit-cascade.svg)
+
 ## Requirements
 
 - An NVIDIA GPU with about 18 GiB free (16 GiB of weights plus KV and compute
