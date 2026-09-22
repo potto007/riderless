@@ -1,4 +1,10 @@
-"""Build the full-only API worker against a llama.cpp base runtime."""
+"""Build the full-only API worker against a llama.cpp base runtime.
+
+The output is a self-contained bundle (`riderless.api.native.bundle`): the
+executable, a copy of the shared libraries it links, and a manifest that names
+both relative to itself. That is the same shape a published release asset
+unpacks to, so a build here and a `worker fetch` are interchangeable installs.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +12,17 @@ import argparse
 import hashlib
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+
+from riderless.api.native.bundle import (
+    MANIFEST_NAME,
+    MANIFEST_SCHEMA_VERSION,
+    RUNTIME_RELATIVE,
+    WORKER_RELATIVE,
+)
 
 # The llama.cpp release this project is tested against. The tag is what a reader
 # fetches; the commit it resolved to is what makes a moved tag detectable. Other
@@ -85,6 +99,25 @@ def validate_base(base: Path) -> tuple[Row, Path, Path]:
     return manifest, headers, libraries
 
 
+def stage_runtime(
+    libraries: Path, destination: Path, checksums: dict[str, str]
+) -> None:
+    """Copy the base runtime into the bundle and re-hash what was copied.
+
+    The unversioned `libfoo.so` symlinks come along: `ggml_backend_load_best`
+    finds a backend through them, and the worker's DT_NEEDED entries name the
+    `libfoo.so.N` links. Hashing after the copy means the manifest vouches for
+    the files that ship, not for the ones they were copied from.
+    """
+    shutil.copytree(libraries, destination, symlinks=True)
+    for name, checksum in checksums.items():
+        copied = destination / name
+        if not copied.is_file():
+            raise ValueError(f"Runtime copy is missing {name}")
+        if digest(copied) != checksum:
+            raise ValueError(f"Runtime copy differs for {name}")
+
+
 def build(base: Path, output: Path) -> Row:
     base = base.resolve()
     output = output.resolve()
@@ -92,14 +125,17 @@ def build(base: Path, output: Path) -> Row:
         raise ValueError("Build output exists; choose a new directory")
     base_manifest, headers, libraries = validate_base(base)
     source = Path(__file__).parent.resolve()
-    build_dir = output / "build"
+    # CMake's scratch tree records absolute paths and object files, so it is
+    # kept out of the bundle and removed once the binary has been copied in.
+    # A failed build raises before that and leaves it in place to look at.
+    cmake_dir = output / "cmake"
     subprocess.run(
         [
             "cmake",
             "-S",
             str(source),
             "-B",
-            str(build_dir),
+            str(cmake_dir),
             f"-DLLAMA_SOURCE={headers}",
             f"-DLLAMA_BUILD={base / 'runtime'}",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -107,14 +143,19 @@ def build(base: Path, output: Path) -> Row:
         check=True,
     )
     subprocess.run(
-        ["cmake", "--build", str(build_dir), "-j", "4"],
+        ["cmake", "--build", str(cmake_dir), "-j", "4"],
         check=True,
     )
     subprocess.run(
-        ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
+        ["ctest", "--test-dir", str(cmake_dir), "--output-on-failure"],
         check=True,
     )
-    executable = build_dir / "riderless-worker"
+    runtime_checksums = dict(base_manifest["runtime_sha256"])
+    stage_runtime(libraries, output / RUNTIME_RELATIVE, runtime_checksums)
+    executable = output / WORKER_RELATIVE
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(cmake_dir / "riderless-worker", executable)
+    shutil.rmtree(cmake_dir)
     source_files = [
         source / "CMakeLists.txt",
         source / "build.py",
@@ -122,12 +163,11 @@ def build(base: Path, output: Path) -> Row:
         source / "worker-utils.h",
         source / "worker-utils-test.cpp",
     ]
-    runtime_checksums = dict(base_manifest["runtime_sha256"])
     sha_source = sha256_helper(headers)
     sha_header = sha_source.with_suffix(".h")
     revision = str(base_manifest["llama_revision"])
     manifest: Row = {
-        "schema_version": 1,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
         # Provenance of the base this worker is linked against. `llama_ref` is
         # what was asked for, `llama_revision` is what that resolved to.
         "llama_revision": revision,
@@ -135,9 +175,17 @@ def build(base: Path, output: Path) -> Row:
         "tested_llama_tag": TESTED_LLAMA_TAG,
         "tested_llama_revision": TESTED_LLAMA_REVISION,
         "tested_revision": revision == TESTED_LLAMA_REVISION,
-        "base_build": str(base),
+        # The base build's own path is deliberately absent: it names the
+        # machine that built this, and a bundle must carry no such path. Its
+        # manifest hash is the provenance that survives relocation.
         "base_build_json_sha256": digest(base / "build.json"),
-        "runtime_dir": str(libraries),
+        "cuda": bool(base_manifest.get("cuda", False)),
+        "cuda_architectures": base_manifest.get("cuda_architectures"),
+        "cuda_redistributables": base_manifest.get("cuda_redistributables", []),
+        # Both paths are relative to this manifest, which is what lets the
+        # bundle be unpacked anywhere and still verify.
+        "executable": str(WORKER_RELATIVE),
+        "runtime_dir": str(RUNTIME_RELATIVE),
         "runtime_sha256": runtime_checksums,
         "runtime_bundle_sha256": bundle_digest(runtime_checksums),
         "source_sha256": {path.name: digest(path) for path in source_files},
@@ -145,7 +193,6 @@ def build(base: Path, output: Path) -> Row:
             "sha256.c": digest(sha_source),
             "sha256.h": digest(sha_header),
         },
-        "executable": str(executable),
         "executable_sha256": digest(executable),
         "runtime_config": {
             "context": 2048,
@@ -161,7 +208,7 @@ def build(base: Path, output: Path) -> Row:
         "generated_tokens": 0,
         "execution_mode": "full",
     }
-    (output / "build.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (output / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 
 

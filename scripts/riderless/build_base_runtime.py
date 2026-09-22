@@ -18,8 +18,14 @@ and contains exactly three things:
     <out>/runtime/bin/      the shared libraries built from that snapshot
     <out>/build.json        revision plus a sha256 for every library
 
+A CUDA build also copies the CUDA runtime libraries the ggml CUDA backend
+links (`libcudart`, `libcublas`, `libcublasLt`) into `runtime/bin` and hashes
+them with the rest, so a machine with only the NVIDIA driver can run the
+result. `--no-cuda-redist` skips that.
+
 Nothing here is redistributed with this project: llama.cpp (MIT) is fetched
-from its own repository at build time.
+from its own repository at build time, and the CUDA libraries come from the
+CUDA toolkit already installed on the build machine, under NVIDIA's terms.
 
 Example:
 
@@ -61,6 +67,13 @@ MAX_JOBS = 4
 # build failure here rather than a link failure in the worker.
 CPU_LIBRARIES = ("llama", "llama-common", "ggml", "ggml-base", "ggml-cpu")
 CUDA_LIBRARY = "ggml-cuda"
+
+# The CUDA runtime libraries `libggml-cuda.so` links. Copying them next to it,
+# the way llama.cpp's own `cudart-*` release tarballs do, means a user needs
+# the NVIDIA driver (`libcuda.so.1`, which is not one of these and must not be
+# copied) and no CUDA toolkit install. They are NVIDIA redistributables under
+# the CUDA EULA, not part of this project's Apache-2.0 source.
+CUDA_REDISTRIBUTABLE_PREFIXES = ("libcudart.so.", "libcublas.so.", "libcublasLt.so.")
 
 
 def digest(path: Path) -> str:
@@ -152,6 +165,7 @@ def configure(
     *,
     cuda: bool,
     cuda_architectures: str | None,
+    native: bool,
 ) -> list[str]:
     options = [
         "-DCMAKE_BUILD_TYPE=Release",
@@ -163,8 +177,17 @@ def configure(
         "-DLLAMA_BUILD_SERVER=OFF",
         "-DLLAMA_BUILD_APP=OFF",
         "-DLLAMA_BUILD_UI=OFF",
+        # The worker never downloads anything, so the common library's HTTPS
+        # support is dead weight. Off, libllama-common stops linking the
+        # system's libssl, which keeps a published bundle from depending on
+        # whichever OpenSSL the user's distribution ships.
+        "-DLLAMA_OPENSSL=OFF",
         f"-DGGML_CUDA={'ON' if cuda else 'OFF'}",
     ]
+    if not native:
+        # -march=native bakes the build machine's CPU into the libraries, which
+        # is right for a local build and wrong for anything published.
+        options.append("-DGGML_NATIVE=OFF")
     if cuda_architectures is not None:
         options.append(f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}")
     run(["cmake", "-S", str(headers), "-B", str(runtime), *options])
@@ -178,7 +201,54 @@ def compile_libraries(runtime: Path, *, cuda: bool, jobs: int) -> None:
     run(["cmake", "--build", str(runtime), "--target", *targets, "-j", str(jobs)])
 
 
-def inventory(libraries: Path, *, cuda: bool) -> dict[str, str]:
+def linked_libraries(library: Path) -> dict[str, Path]:
+    """soname to resolved file, for everything `ldd` reports for one library."""
+    report = subprocess.run(
+        ["ldd", str(library)], capture_output=True, text=True, check=True
+    )
+    resolved: dict[str, Path] = {}
+    for line in report.stdout.splitlines():
+        soname, separator, remainder = line.partition(" => ")
+        if not separator:
+            continue
+        target = remainder.split(" (")[0].strip()
+        if target:
+            resolved[soname.strip()] = Path(target)
+    return resolved
+
+
+def stage_cuda_redistributables(libraries: Path) -> list[str]:
+    """Copy the CUDA runtime `libggml-cuda.so` links into the runtime directory.
+
+    Each is copied through its symlink to a plain file named for its soname,
+    which is what the loader looks for, so the runtime holds one file per
+    library and no versioned duplicates. Mirrors llama.cpp's `cudart-*`
+    tarballs. `libcuda.so.1` is the driver and is deliberately not copied.
+    """
+    backend = (libraries / f"lib{CUDA_LIBRARY}.so").resolve()
+    linked = linked_libraries(backend)
+    staged: list[str] = []
+    for prefix in CUDA_REDISTRIBUTABLE_PREFIXES:
+        matches = [name for name in linked if name.startswith(prefix)]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{backend.name} links {len(matches)} libraries matching "
+                f"{prefix}*; expected exactly one"
+            )
+        soname = matches[0]
+        source = linked[soname].resolve()
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        # copyfile, not copy2: the copy is named for the soname, never for the
+        # fully versioned file it was resolved from.
+        shutil.copyfile(source, libraries / soname)
+        staged.append(soname)
+    return sorted(staged)
+
+
+def inventory(
+    libraries: Path, *, cuda: bool, redistributables: list[str]
+) -> dict[str, str]:
     """Hash the real library file behind each unversioned `lib<name>.so` link."""
     names = [*CPU_LIBRARIES]
     if cuda:
@@ -190,6 +260,9 @@ def inventory(libraries: Path, *, cuda: bool) -> dict[str, str]:
             raise FileNotFoundError(link)
         resolved = link.resolve()
         checksums[resolved.name] = digest(resolved)
+    # Already plain files named for their soname, so they are hashed as they lie.
+    for soname in redistributables:
+        checksums[soname] = digest(libraries / soname)
     return checksums
 
 
@@ -201,6 +274,8 @@ def build(
     repository: str,
     cuda: bool,
     cuda_architectures: str | None,
+    native: bool,
+    cuda_redistributables: bool,
     jobs: int,
     keep_checkout: bool,
 ) -> dict[str, Any]:
@@ -224,14 +299,21 @@ def build(
     runtime = out / "runtime"
     export_headers(source, name, headers)
     options = configure(
-        headers, runtime, cuda=cuda, cuda_architectures=cuda_architectures
+        headers,
+        runtime,
+        cuda=cuda,
+        cuda_architectures=cuda_architectures,
+        native=native,
     )
     compile_libraries(runtime, cuda=cuda, jobs=jobs)
 
     libraries = runtime / "bin"
     if not libraries.is_dir():
         raise ValueError(f"Expected shared libraries in {libraries}")
-    checksums = inventory(libraries, cuda=cuda)
+    staged: list[str] = []
+    if cuda and cuda_redistributables:
+        staged = stage_cuda_redistributables(libraries)
+    checksums = inventory(libraries, cuda=cuda, redistributables=staged)
 
     if checkout is not None and not keep_checkout:
         shutil.rmtree(checkout)
@@ -249,6 +331,8 @@ def build(
         "runtime_sha256": checksums,
         "cuda": cuda,
         "cuda_architectures": cuda_architectures,
+        "cuda_redistributables": staged,
+        "ggml_native": native,
         # Kept for readers that expect the older field name.
         "cpu_only": not cuda,
         "cmake_options": options,
@@ -299,6 +383,22 @@ def main() -> None:
         "you own is what keeps a CUDA build's memory and time bounded",
     )
     parser.add_argument(
+        "--no-native",
+        dest="native",
+        action="store_false",
+        help="pass GGML_NATIVE=OFF, so the libraries carry no -march=native "
+        "from the build machine. Required for anything published; a local "
+        "build for one machine can leave it on",
+    )
+    parser.add_argument(
+        "--no-cuda-redist",
+        dest="cuda_redistributables",
+        action="store_false",
+        help="do not copy libcudart/libcublas/libcublasLt next to the CUDA "
+        "backend. Without them the runtime needs a matching CUDA toolkit on "
+        "the machine that runs it, not just the NVIDIA driver",
+    )
+    parser.add_argument(
         "--jobs",
         type=int,
         default=MAX_JOBS,
@@ -318,6 +418,8 @@ def main() -> None:
             repository=args.repository,
             cuda=args.cuda,
             cuda_architectures=args.cuda_architectures,
+            native=args.native,
+            cuda_redistributables=args.cuda_redistributables,
             jobs=args.jobs,
             keep_checkout=args.keep_checkout,
         )

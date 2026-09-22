@@ -9,7 +9,61 @@ worker protocol can change between minor versions without a deprecation
 period. Each release records which llama.cpp revision and which model file its
 published measurements were taken on.
 
-## Unreleased
+## 0.2.0 - 2026-09-22
+
+### Added
+
+- Prebuilt worker bundles, published from GitHub Releases, so a first answer
+  needs no compiler. `python -m riderless.api.cli worker fetch` (also
+  `scripts/riderless/fetch_worker.py`) picks `cuda13`, `cuda12` or `cpu` from
+  the NVIDIA driver `nvidia-smi` reports and says which, verifies the download
+  against the release's `SHA256SUMS`, checks GitHub's build provenance with
+  `gh attestation verify` when `gh` is installed (`--require-attestation`
+  makes a missing or failing check fatal instead of a warning), and unpacks
+  into a `--output` that must not already exist
+  ([ADR 0005](docs/decisions/0005-relocatable-prebuilt-worker-bundles.md)).
+- `riderless.api.native.bundle`, which defines the install layout
+  (`build.json`, `build/riderless-worker`, `runtime/*.so*`) and packs and
+  unpacks it. `ApiConfig`'s defaults already point inside it, so a bundle
+  unpacked into `build/api-worker` needs no flags.
+- A release workflow on `v*` tags building all three flavors in NVIDIA's devel
+  containers with `GGML_NATIVE=OFF` and
+  `CMAKE_CUDA_ARCHITECTURES=80;86;89;90;120`, attaching the tarballs and a
+  `SHA256SUMS` to the release, and attesting them with
+  `actions/attest-build-provenance`.
+- A CUDA 13 container image, `ghcr.io/potto007/riderless:<version>-cuda13`,
+  built from `docker/Dockerfile`. It expects a GGUF mounted at `/models` and
+  serves on 8090.
+- `build_base_runtime.py --no-native` (`GGML_NATIVE=OFF`), and CUDA builds now
+  copy `libcudart`, `libcublas` and `libcublasLt` next to the CUDA backend and
+  hash them with the rest, so a machine with only the NVIDIA driver can run
+  the result. `--no-cuda-redist` skips that.
+
+### Changed
+
+- **Build manifests are schema 2 and relocatable.** `executable` and
+  `runtime_dir` are now relative to the manifest's own directory and resolved
+  against it; an absolute path, or a relative one escaping the bundle, is
+  refused. `base_build`, which recorded the builder's own path, is gone;
+  `base_build_json_sha256` keeps its provenance. Schema 1 manifests are still
+  read with their absolute paths, so a pre-0.2.0 install keeps starting, but
+  it cannot be packed or moved. Every hash check is unchanged.
+- **The worker takes `--runtime-dir`** instead of a compile-time backend
+  directory, and the backend passes the directory it just hashed. The worker
+  links with an `$ORIGIN/../runtime` run path and no absolute path, so its
+  sha256 no longer depends on where it was built. `riderless-so1-probe` takes
+  the same argument, and `bench_competitor_so1.py` gained `--runtime-dir`.
+- `riderless.api.native.build` copies the base runtime into the bundle and
+  re-hashes the copy, builds in a scratch directory it removes on success, and
+  leaves `build/` holding only the executable.
+- `build_base_runtime.py` configures llama.cpp with `LLAMA_OPENSSL=OFF`. The
+  worker never downloads anything, and without it `libllama-common` no longer
+  links the build machine's libssl, which a published bundle would otherwise
+  require on the user's system. The only system library a bundle needs is
+  OpenMP's `libgomp.so.1`.
+- A worker that dies before its handshake now reports its last stderr lines
+  in the `native backend failed to start` error, so a missing shared library
+  or a rejected argument is named instead of hidden behind "closed stdout".
 
 ## 0.1.0 - 2026-09-22
 

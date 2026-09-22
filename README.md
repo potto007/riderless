@@ -113,32 +113,38 @@ and [docs/results/batched-mode.md](docs/results/batched-mode.md).
 
 - An NVIDIA GPU with about 18 GiB free (16 GiB of weights plus KV and compute
   buffers at the default 2048-token context), or CPU if you are patient.
-- Python 3.12 or newer, Git, CMake, a C++ toolchain, and the CUDA toolkit for a
-  GPU build. Nothing from llama.cpp is vendored; the build script fetches and
-  compiles the tested release, `v0.4.1`.
+- Linux on x86_64, glibc 2.39 or newer (Ubuntu 24.04 and later). WSL2 counts;
+  native Windows and macOS do not. The published worker bundles are built on
+  Ubuntu 24.04, so glibc 2.39 is the floor for them; a source build only needs
+  a toolchain that can compile llama.cpp.
+- Python 3.12 or newer. A source build also needs Git, CMake, a C++ toolchain
+  and, for a GPU, the CUDA toolkit. Nothing from llama.cpp is vendored; the
+  build script fetches and compiles the tested release, `v0.4.1`.
+- For the prebuilt `cuda13` bundle, an NVIDIA driver of 580.65 or newer; for
+  `cuda12`, 525.60 or newer. The bundle carries its own `libcudart`,
+  `libcublas` and `libcublasLt`, so no CUDA toolkit is needed to run it. The
+  one system library every bundle needs is OpenMP's `libgomp.so.1`
+  (`libgomp1` on Debian and Ubuntu, `libgomp` on Fedora), which a desktop
+  install already has and a minimal container may not.
 - 17 GB of disk for the Gemma 4 26B-A4B GGUF, which you download yourself
-  under its own licence terms; it is not redistributed here.
+  under its own licence terms; it is not redistributed here. A cuda13 worker
+  bundle is a further ~450 MB, most of it NVIDIA's cuBLAS.
 
 ## Quick start
 
-Four commands from a clone to a first answer. Budget about half an hour, most
-of it waiting: two compiles and a 17 GB download. No prebuilt worker is
-published yet, so the build steps are required; see
-[Build details](#build-details) for what they do and how to adjust them.
+Four commands from a clone to a first answer, no compiler needed. Budget about
+twenty minutes, nearly all of it the 17 GB model download.
 
 ```bash
-# 1. Install. Needs Python 3.12+, CMake, a C++ toolchain and, for --cuda, the
-#    CUDA toolkit. (No uv? `python -m venv .venv && .venv/bin/pip install -e .`
-#    and drop the `uv run` prefix.)
+# 1. Install. Needs Python 3.12+. (No uv? `python -m venv .venv &&
+#    .venv/bin/pip install -e .` and drop the `uv run` prefix.)
 uv sync
 
-# 2. Build llama.cpp v0.4.1 and the worker. Replace 120 with your GPU's compute
-#    capability (120 is an RTX 5090; 89 is a 4090). Drop --cuda for CPU only.
-#    About 10 minutes for one architecture.
-uv run python scripts/riderless/build_base_runtime.py \
-  --out build/llama-base --cuda --cuda-architectures 120
-uv run python -m riderless.api.native.build \
-  --base build/llama-base --output build/api-worker
+# 2. Download a prebuilt worker. Picks cuda13, cuda12 or cpu from your NVIDIA
+#    driver and says which; --flavor overrides it. The download is checked
+#    against the release's SHA256SUMS, and against GitHub's build provenance
+#    when `gh` is installed (--require-attestation makes that mandatory).
+uv run python -m riderless.api.cli worker fetch --output build/api-worker
 
 # 3. Download the model into models/ (17 GB, Apache-2.0, not gated).
 uv run --with huggingface_hub hf download unsloth/gemma-4-26B-A4B-it-GGUF \
@@ -183,6 +189,15 @@ curl -s -X POST http://127.0.0.1:8090/v1/decisions \
   -H 'content-type: application/json' --data @riderless/examples/hello.json
 ```
 
+Or in a container, which carries the cuda13 worker and expects your GGUF
+mounted at `/models`. It needs the NVIDIA container toolkit and a CUDA 13
+driver:
+
+```bash
+docker run --gpus all -p 8090:8090 -v "$PWD/models:/models:ro" \
+  ghcr.io/potto007/riderless:latest-cuda13
+```
+
 Step 4 and `serve` use `ApiConfig`'s defaults for the worker
 (`build/api-worker/build/riderless-worker`), the manifest
 (`build/api-worker/build.json`) and the model
@@ -191,7 +206,34 @@ and `--model-path` to use another layout. `run` accepts one JSON object, a JSON
 array, or JSONL, and `--diagnostics` adds the per-question readout described
 below.
 
+A downloaded worker is verified exactly as a compiled one is. Startup re-hashes
+the executable, every runtime library and the model, and refuses to start on
+any mismatch; the download adds the `SHA256SUMS` and attestation checks on top
+of that, and removes the compiler, not a check. See
+[ADR 0005](docs/decisions/0005-relocatable-prebuilt-worker-bundles.md).
+
+One caveat on the published binaries: every number in `docs/results/` was
+measured on a native build for one GPU architecture. The release bundles are
+built with `GGML_NATIVE=OFF` and `CMAKE_CUDA_ARCHITECTURES=80;86;89;90;120`, a
+different compile, so a prebuilt worker is not promised to reproduce those runs
+bit for bit. Answers stay deterministic per configuration; they are not
+identical across configurations, which is the same caveat that already applies
+to batch size and llama.cpp revision. Build from source if you need the exact
+configuration the results pages describe.
+
 ### Build details
+
+Building from source replaces step 2 and takes about ten minutes. It needs
+Git, CMake, a C++ toolchain and, for `--cuda`, the CUDA toolkit.
+
+```bash
+# Replace 120 with your GPU's compute capability (120 is an RTX 5090; 89 is a
+# 4090). Drop --cuda for CPU only.
+uv run python scripts/riderless/build_base_runtime.py \
+  --out build/llama-base --cuda --cuda-architectures 120
+uv run python -m riderless.api.native.build \
+  --base build/llama-base --output build/api-worker
+```
 
 `build_base_runtime.py` clones llama.cpp at the tested release (`v0.4.1`,
 commit `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`), verifies the tag still
@@ -201,14 +243,32 @@ another revision (the service then warns once at startup that the published
 numbers were measured on the tested one), `--llama-source <clone>` reuses a
 clone you already have, and `--jobs` caps the compile. Without `--cuda-architectures`
 llama.cpp builds every architecture it knows, which costs time and memory you
-do not need to spend.
+do not need to spend. `--no-native` drops `-march=native`, which is what the
+published builds use and what you want if the result has to run anywhere but
+this machine. A CUDA build also copies `libcudart`, `libcublas` and
+`libcublasLt` in beside the backend so the result needs only a driver;
+`--no-cuda-redist` skips that.
 
 `riderless.api.native.build` compiles the worker against that runtime, runs the
-worker's CPU unit test, and records every input hash in its own `build.json`.
-The output directory must not already exist; delete it to rebuild. No model is
-loaded and no GPU work happens in either build step. At startup the service
-re-hashes the worker, the runtime files and the model, and refuses to start if
-any differ from the manifest.
+worker's CPU unit test, copies the runtime libraries in beside the executable,
+and records every input hash in its own `build.json`. The output directory must
+not already exist; delete it to rebuild. No model is loaded and no GPU work
+happens in either build step. At startup the service re-hashes the worker, the
+runtime files and the model, and refuses to start if any differ from the
+manifest.
+
+Either route produces the same bundle, and it names no path outside itself:
+
+```
+build/api-worker/build.json                the manifest, schema 2
+build/api-worker/build/riderless-worker    the executable
+build/api-worker/runtime/*.so*             the libraries it links and dlopens
+```
+
+`python -m riderless.api.native.bundle pack|unpack` moves one between machines,
+and that is what the release workflow publishes. A worker directory built
+before 0.2.0 recorded absolute paths (manifest schema 1); it still starts, but
+it cannot be moved or packed, so rebuild it if you want either.
 
 Routes: `POST /v1/decisions`, `GET /v1/models`, `GET /health`, plus FastAPI's
 `/openapi.json`. Add `?diagnostics=true` to a request for a per-question readout
@@ -332,7 +392,7 @@ v0.4.1 is reported separately rather than written over them.
 Further reading: [docs/whitepaper.md](docs/whitepaper.md) for the whole
 story in one place, [docs/architecture.md](docs/architecture.md) for the process
 model and protocol, [docs/usecase-suites.md](docs/usecase-suites.md) for the
-suites and how to run them, and [docs/decisions/](docs/decisions/) for the four
+suites and how to run them, and [docs/decisions/](docs/decisions/) for the five
 decision records that shape v1.
 
 ## Licence and attribution

@@ -20,7 +20,8 @@ Third-party software NOT redistributed here
 -------------------------------------------------------------------------------
 
 This repository vendors no third-party source. The items below are fetched,
-built, or downloaded by the user on their own machine, under their own terms.
+built, or downloaded on the user's or the build machine's own terms. Where a
+published release artifact carries third-party binaries, the entry says so.
 
 llama.cpp (MIT License)
     https://github.com/ggml-org/llama.cpp
@@ -30,6 +31,16 @@ llama.cpp (MIT License)
     read from that checkout at build time. No llama.cpp or ggml file is copied
     into this repository and none is distributed with it. The MIT license text
     ships with llama.cpp itself.
+
+NVIDIA CUDA runtime libraries (NVIDIA CUDA Toolkit EULA)
+    https://docs.nvidia.com/cuda/eula/
+    No CUDA file is in this repository. A CUDA build of the base runtime copies
+    libcudart, libcublas and libcublasLt out of the CUDA toolkit already on the
+    build machine and into the worker bundle, so that running the result needs
+    only the NVIDIA driver. The prebuilt CUDA bundles this project publishes on
+    GitHub Releases therefore contain those NVIDIA redistributable libraries,
+    under NVIDIA's terms rather than this project's Apache-2.0 licence.
+    `build_base_runtime.py --no-cuda-redist` builds without them.
 
 Gemma model weights (Gemma Terms of Use)
     No model weights are included, mirrored, or redistributed here. The user

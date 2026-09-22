@@ -8,6 +8,18 @@ token, or feed an answer token back into the model.
 The API model id is `local-gemma-riderless-v1`. It names this local
 deployment only and claims no parity with any hosted service.
 
+## Install the native worker
+
+Either download a published bundle or compile one. They produce the same
+directory and are verified identically at startup.
+
+```bash
+# Picks cuda13, cuda12 or cpu from the NVIDIA driver and says which, checks the
+# download against the release SHA256SUMS and (with gh installed) GitHub's
+# build provenance, then unpacks into a directory that must not already exist.
+python -m riderless.api.cli worker fetch --output build/api-worker
+```
+
 ## Build the native worker
 
 The build is create-only and verifies the base runtime before compiling:
@@ -25,11 +37,16 @@ python -m riderless.api.native.build \
   --output build/api-worker
 ```
 
-The result is `build/api-worker/build/riderless-worker`. Its sibling
-`build.json` records the worker source, executable, bundled sha256 helper,
-linked runtime, and llama.cpp revision hashes. Startup enforces the executable,
-runtime files, and runtime bundle hashes; the source and helper hashes are a
-build record and are not rechecked at startup.
+The result is a bundle that names no path outside itself: the executable at
+`build/api-worker/build/riderless-worker`, a copy of the shared libraries at
+`build/api-worker/runtime/`, and `build/api-worker/build.json`, which records
+the worker source, executable, bundled sha256 helper, linked runtime, and
+llama.cpp revision hashes, with the executable and runtime directory relative
+to the manifest. Startup enforces the executable, runtime files, and runtime
+bundle hashes; the source and helper hashes are a build record and are not
+rechecked at startup. `python -m riderless.api.native.bundle pack|unpack`
+moves a bundle between machines
+([ADR 0005](../../docs/decisions/0005-relocatable-prebuilt-worker-bundles.md)).
 
 The llama.cpp revision is provenance, not a gate. Every hash above is enforced
 whatever the revision, and a revision other than the tested one only logs a

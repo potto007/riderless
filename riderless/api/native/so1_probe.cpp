@@ -54,6 +54,9 @@ constexpr int PROTOCOL_VERSION = 1;
 
 struct settings {
     std::string model_path;
+    // worker.cpp's `--runtime-dir`: the ggml backends are dlopened from the
+    // directory the caller names, not from a path compiled into the binary.
+    std::string runtime_dir;
     // worker.cpp's sequential defaults. Only --context is expected to move,
     // because a packed competitor prompt is longer than a riderless one.
     int context = 2048;
@@ -79,7 +82,8 @@ int parse_positive(const std::string & text, const std::string & name) {
 
 settings parse_args(int argc, char ** argv) {
     const std::set<std::string> valued{
-        "--model", "--context", "--batch", "--ubatch", "--threads"};
+        "--model", "--runtime-dir", "--context", "--batch", "--ubatch",
+        "--threads"};
     std::map<std::string, std::string> values{
         {"--context", "2048"}, {"--batch", "256"},
         {"--ubatch", "256"}, {"--threads", "8"}};
@@ -95,11 +99,17 @@ settings parse_args(int argc, char ** argv) {
         }
         values[flag] = argv[++index];
     }
-    if (values.count("--model") == 0) {
-        throw std::runtime_error("--model is required");
+    for (const auto * flag : {"--model", "--runtime-dir"}) {
+        if (values.count(flag) == 0) {
+            throw std::runtime_error(std::string(flag) + " is required");
+        }
     }
     settings result;
     result.model_path = values.at("--model");
+    result.runtime_dir = values.at("--runtime-dir");
+    if (result.runtime_dir.empty()) {
+        throw std::runtime_error("runtime-dir must not be empty");
+    }
     result.context = parse_positive(values.at("--context"), "context");
     result.batch = parse_positive(values.at("--batch"), "batch");
     result.ubatch = parse_positive(values.at("--ubatch"), "ubatch");
@@ -342,7 +352,7 @@ int main(int argc, char ** argv) {
     try {
         const settings config = parse_args(argc, argv);
         reject_incompatible_environment();
-        ggml_backend_load_all_from_path(RIDERLESS_BACKEND_DIR);
+        ggml_backend_load_all_from_path(config.runtime_dir.c_str());
         if (config.gpu && !ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU)) {
             throw std::runtime_error(
                 "GPU opt-in requested but no GPU backend is available");
