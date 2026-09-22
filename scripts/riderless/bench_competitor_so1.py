@@ -80,8 +80,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import so1  # type: ignore[import-untyped]
-from run_usecase_suites import (  # type: ignore[import-untyped]
+import so1
+from run_usecase_suites import (  # type: ignore[import-not-found]
     Case,
     Outcome,
     RankOutcome,
@@ -92,9 +92,9 @@ from run_usecase_suites import (  # type: ignore[import-untyped]
     score_ranking,
     write_json,
 )
-from so1.decider import Decider  # type: ignore[import-untyped]
-from so1.prompting import ChatFormat, PromptBuilder  # type: ignore[import-untyped]
-from so1.schema import LETTERS, Choice, Decision  # type: ignore[import-untyped]
+from so1.decider import Decider
+from so1.prompting import ChatFormat, PromptBuilder
+from so1.schema import LETTERS, Choice, Decision
 from transformers import AutoTokenizer
 
 # `_options` and `_question_heading` decide the option ids, their order and the

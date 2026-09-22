@@ -62,3 +62,9 @@ python_version = "3.12"
 strict = true
 explicit_package_bases = true
 warn_unreachable = true
+
+# so1 (open-alternative-jev) ships no type information; it and transformers are
+# only installed for the competitor benchmark, and CI installs neither.
+[[tool.mypy.overrides]]
+module = ["so1", "so1.*", "transformers", "transformers.*"]
+ignore_missing_imports = true
