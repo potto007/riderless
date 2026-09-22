@@ -1,0 +1,209 @@
+name: Release
+
+# Publishes the prebuilt worker bundles a `worker fetch` installs, so a casual
+# user never compiles llama.cpp. A `v*` tag builds them; workflow_dispatch runs
+# the same matrix against an existing tag for testing.
+#
+# The jobs below need, between them:
+#   permissions: contents: write, id-token: write, attestations: write
+# `contents: write` uploads the assets to the release, and `id-token` plus
+# `attestations` are what actions/attest-build-provenance signs with. They are
+# declared per job rather than at the top of the file so the build jobs hold no
+# more than they use.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "existing tag to build and upload to"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  # The architecture set the published CUDA bundles cover: Ampere (80, 86),
+  # Ada (89), Hopper (90) and Blackwell (120). Broader than a local build, so
+  # a published binary is not guaranteed bit-identical to the numbers in
+  # docs/results, which were measured on a native single-architecture build.
+  CUDA_ARCHITECTURES: "80;86;89;90;120"
+
+jobs:
+  bundle:
+    name: bundle (${{ matrix.flavor }})
+    runs-on: ubuntu-24.04
+    # llama.cpp's own ubuntu-cuda release job builds CUDA on a plain
+    # ubuntu-24.04 runner inside the devel container, with no GPU present.
+    # The cpu flavor runs in plain ubuntu:24.04 rather than bare on the runner,
+    # so all three bundles are built against the same glibc 2.39 floor and the
+    # container field is never empty.
+    container: ${{ matrix.container }}
+    # A five-architecture CUDA build of the ggml kernels is the long pole and
+    # has no ccache here; llama.cpp's equivalent job runs on the 360 minute
+    # default. 180 is generous for this smaller target set and still fails
+    # rather than burning a whole runner-hour budget.
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: cuda13
+            container: nvidia/cuda:13.4.1-devel-ubuntu24.04
+            cuda: true
+          - flavor: cuda12
+            container: nvidia/cuda:12.8.2-devel-ubuntu24.04
+            cuda: true
+          - flavor: cpu
+            container: ubuntu:24.04
+            cuda: false
+    steps:
+      # The containers ship no git, and actions/checkout needs one to create a
+      # real repository.
+      - name: Install container dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git build-essential cmake ca-certificates curl
+
+      - uses: actions/checkout@v5
+
+      # checkout runs as the host user and in-container steps run as root, so
+      # git refuses to touch a repository it does not own.
+      - name: Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      # GGML_NATIVE=OFF keeps the build machine's -march out of the published
+      # libraries. The CUDA flavors also copy libcudart/libcublas/libcublasLt
+      # out of the container into the bundle, so a user needs only the driver.
+      - name: Build the llama.cpp base runtime
+        shell: bash
+        run: |
+          if [ "${{ matrix.cuda }}" = "true" ]; then
+            uv run --no-sync python scripts/riderless/build_base_runtime.py \
+              --out build/llama-base --no-native \
+              --cuda --cuda-architectures "${CUDA_ARCHITECTURES}"
+          else
+            uv run --no-sync python scripts/riderless/build_base_runtime.py \
+              --out build/llama-base --no-native
+          fi
+
+      - name: Build the worker bundle
+        run: |
+          uv run --no-sync python -m riderless.api.native.build \
+            --base build/llama-base --output build/api-worker
+
+      - name: Pack the bundle
+        id: pack
+        shell: bash
+        run: |
+          name="riderless-worker-${{ steps.version.outputs.version }}-linux-x64-${{ matrix.flavor }}.tar.gz"
+          uv run --no-sync python -m riderless.api.native.bundle pack \
+            --directory build/api-worker --output "dist/${name}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundle-${{ matrix.flavor }}
+          path: dist/${{ steps.pack.outputs.name }}
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bundle-*
+          merge-multiple: true
+          path: dist
+
+      - name: Resolve tag
+        id: version
+        shell: bash
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # One file, in the format `sha256sum -c` reads, listing every asset. This
+      # is what `worker fetch` checks a download against.
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: sha256sum -- *.tar.gz > SHA256SUMS
+
+      # Signs the tarballs with GitHub's own build provenance, which
+      # `gh attestation verify` checks. v4 is the current major.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.tar.gz
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.version.outputs.tag }}" \
+            dist/*.tar.gz dist/SHA256SUMS --clobber
+
+  docker:
+    name: docker (cuda13)
+    needs: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: bundle-cuda13
+          path: dist
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          build-args: |
+            BUNDLE=dist/riderless-worker-${{ steps.version.outputs.version }}-linux-x64-cuda13.tar.gz
+          tags: |
+            ghcr.io/potto007/riderless:${{ steps.version.outputs.version }}-cuda13
+            ghcr.io/potto007/riderless:latest-cuda13

@@ -21,3 +21,7 @@ models/
 # Run artifacts from the validation and use case drivers
 outputs/
 *.log
+
+# Packed worker bundles, which the release workflow builds and uploads
+dist/
+*.tar.gz
