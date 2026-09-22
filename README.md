@@ -111,68 +111,104 @@ and [docs/results/batched-mode.md](docs/results/batched-mode.md).
 
 ## Requirements
 
-- An NVIDIA GPU, or CPU if you are patient. With Gemma 4 26B-A4B UD-Q4_K_XL and
-  the default 2048-token context, the worker holds about 18 GiB of device memory
-  (roughly 16 GiB of weights plus KV and compute buffers), so budget that much
-  free VRAM. In the measured run the whole card peaked at 22.5 GiB, but that
-  figure includes a 4.83 GiB pre-load baseline from unrelated processes.
-- A llama.cpp build. This project is tested against release `v0.4.1` (commit
-  `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`), which the base-runtime script
-  fetches by default. Other revisions work if the common library API still
-  matches, and are built and hash-verified identically; results may differ,
-  and the build and the service each say so once. Nothing from llama.cpp is
-  vendored here; you build it yourself.
-- Python 3.12 or newer, Git (the base-runtime script fetches the revision),
-  CMake, and a C++ toolchain.
-- The Gemma 4 26B-A4B instruction-tuned GGUF. Weights are not included in this
-  repository and are not redistributed here; download them yourself under their
-  own licence terms.
+- An NVIDIA GPU with about 18 GiB free (16 GiB of weights plus KV and compute
+  buffers at the default 2048-token context), or CPU if you are patient.
+- Python 3.12 or newer, Git, CMake, a C++ toolchain, and the CUDA toolkit for a
+  GPU build. Nothing from llama.cpp is vendored; the build script fetches and
+  compiles the tested release, `v0.4.1`.
+- 17 GB of disk for the Gemma 4 26B-A4B GGUF, which you download yourself
+  under its own licence terms; it is not redistributed here.
 
 ## Quick start
 
+Four commands from a clone to a first answer. Budget about half an hour, most
+of it waiting: two compiles and a 17 GB download. No prebuilt worker is
+published yet, so the build steps are required; see
+[Build details](#build-details) for what they do and how to adjust them.
+
 ```bash
-# 0. Install the package and its dependencies. Without uv, use
-#    `python -m venv .venv && .venv/bin/pip install -e .` and drop the `uv run`
-#    prefix below, activating that virtualenv instead.
+# 1. Install. Needs Python 3.12+, CMake, a C++ toolchain and, for --cuda, the
+#    CUDA toolkit. (No uv? `python -m venv .venv && .venv/bin/pip install -e .`
+#    and drop the `uv run` prefix.)
 uv sync
 
-# 1. Build the llama.cpp base runtime (headers, shared libraries, and a
-#    build.json that records the revision and per-file hashes). Defaults to the
-#    tested release, v0.4.1; --revision <tag-or-sha> builds another one. Drop
-#    --cuda for a CPU-only runtime; with it you need a CUDA toolkit. On a small
-#    machine also pass --cuda-architectures with your own GPU's compute
-#    capability (120 for an RTX 5090): building every architecture costs time
-#    and memory you do not need to spend.
+# 2. Build llama.cpp v0.4.1 and the worker. Replace 120 with your GPU's compute
+#    capability (120 is an RTX 5090; 89 is a 4090). Drop --cuda for CPU only.
+#    About 10 minutes for one architecture.
 uv run python scripts/riderless/build_base_runtime.py \
   --out build/llama-base --cuda --cuda-architectures 120
-
-# 2. Build the worker against that base runtime. The output directory must not
-#    already exist; the build records every input hash in build.json and runs its
-#    CPU unit test. No model is loaded and no GPU work happens here.
 uv run python -m riderless.api.native.build \
-  --base build/llama-base \
-  --output build/api-worker
+  --base build/llama-base --output build/api-worker
 
-# 3a. Answer a file of requests (one JSON object, a JSON array, or JSONL).
+# 3. Download the model into models/ (17 GB, Apache-2.0, not gated).
+uv run --with huggingface_hub hf download unsloth/gemma-4-26B-A4B-it-GGUF \
+  gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --local-dir models
+
+# 4. Answer the bundled hello request.
 uv run python -m riderless.api.cli run \
-  --input requests.jsonl --output results.jsonl \
-  --worker build/api-worker/build/riderless-worker \
-  --manifest build/api-worker/build.json \
-  --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
-  --gpu --diagnostics
-
-# 3b. Or run the ASGI app on loopback for a manual look.
-uv run python -m riderless.api.cli serve \
-  --worker build/api-worker/build/riderless-worker \
-  --manifest build/api-worker/build.json \
-  --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
-  --gpu --host 127.0.0.1 --port 8090
+  --input riderless/examples/hello.json --output hello-answers.jsonl --gpu
 ```
 
-The worker and manifest paths above are also `ApiConfig`'s defaults, so you can
-omit `--worker` and `--manifest` if you keep this layout. Download the Gemma 4
-26B-A4B instruction-tuned GGUF yourself and point `--model-path` at it; the
-default expects it at `models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.
+`hello.json` is a customer message ("I was charged twice for the same order")
+with one question of each type: which team should handle it, how urgent it is,
+and whether it reports a duplicate charge. On an RTX 5090 the command takes
+about 11 seconds, nearly all of it loading the model, and writes:
+
+```json
+{
+  "model": "local-gemma-riderless-v1",
+  "answers": {
+    "route": {"type": "choice", "choice": "billing",
+              "probabilities": {"billing": 0.99999998, "technical": 2.2e-08, "sales": 1.3e-09},
+              "confidence": 0.99999998},
+    "urgency": {"type": "score", "score": 1.99998,
+                "legend": {"0": "low", "1": "medium", "2": "high"},
+                "probabilities": {"0": 4.9e-07, "1": 2.4e-05, "2": 0.99998},
+                "confidence": 0.99998},
+    "duplicate_charge": {"type": "noul", "noul": 0.99999992}
+  },
+  "usage": {"input_tokens": 417, "output_tokens": 0}
+}
+```
+
+(Probabilities abbreviated; the file carries full precision. Those confidences
+are typical and are not calibrated; see [Limitations](#limitations).)
+
+To serve it over HTTP instead:
+
+```bash
+uv run python -m riderless.api.cli serve --gpu --host 127.0.0.1 --port 8090
+curl -s http://127.0.0.1:8090/health
+curl -s -X POST http://127.0.0.1:8090/v1/decisions \
+  -H 'content-type: application/json' --data @riderless/examples/hello.json
+```
+
+Step 4 and `serve` use `ApiConfig`'s defaults for the worker
+(`build/api-worker/build/riderless-worker`), the manifest
+(`build/api-worker/build.json`) and the model
+(`models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`); pass `--worker`, `--manifest`
+and `--model-path` to use another layout. `run` accepts one JSON object, a JSON
+array, or JSONL, and `--diagnostics` adds the per-question readout described
+below.
+
+### Build details
+
+`build_base_runtime.py` clones llama.cpp at the tested release (`v0.4.1`,
+commit `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`), verifies the tag still
+resolves to that commit, builds the shared libraries, and writes `build.json`
+with the revision and a hash of every file. `--revision <tag-or-sha>` builds
+another revision (the service then warns once at startup that the published
+numbers were measured on the tested one), `--llama-source <clone>` reuses a
+clone you already have, and `--jobs` caps the compile. Without `--cuda-architectures`
+llama.cpp builds every architecture it knows, which costs time and memory you
+do not need to spend.
+
+`riderless.api.native.build` compiles the worker against that runtime, runs the
+worker's CPU unit test, and records every input hash in its own `build.json`.
+The output directory must not already exist; delete it to rebuild. No model is
+loaded and no GPU work happens in either build step. At startup the service
+re-hashes the worker, the runtime files and the model, and refuses to start if
+any differ from the manifest.
 
 Routes: `POST /v1/decisions`, `GET /v1/models`, `GET /health`, plus FastAPI's
 `/openapi.json`. Add `?diagnostics=true` to a request for a per-question readout
