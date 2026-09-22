@@ -282,6 +282,11 @@ v0.4.1 is reported separately rather than written over them.
 - Opt-in batched evaluation: the same suites and harness with every question of
   a request in one decode, against the sequential default on the same worker.
   [docs/results/batched-mode.md](docs/results/batched-mode.md)
+- Against two open decision models: `jaredpalmer/kev-9b` and
+  `convaiinnovations/laya` run on the same seven suites with the same scorer,
+  with their weights, their serving options, what each latency figure measures,
+  and the candidate that could not be run.
+  [docs/results/open-model-comparison.md](docs/results/open-model-comparison.md)
 - Against the same model used generatively: llama-bench prefill and decode
   figures for the identical GGUF, and what they imply for one question and for
   eight questions over one document.
