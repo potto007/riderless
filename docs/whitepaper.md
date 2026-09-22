@@ -237,11 +237,13 @@ on every call, deterministically, with the prompt hash and the label-token
 mapping beside it.
 
 The earlier proof of concept went one step further and read a trained linear
-head at Gemma block 18 of 31, exiting early when confident: median 17 ms
+head at Gemma block 18 of 30, exiting early when confident: median 17 ms
 against 28 ms for the full pass on a three-class banking task, at 114 of 120
 accuracy. That path needs a trained head per task and was set aside for the
 general API, but it is the natural next lever if the fixed 30 ms per question
 ever matters.
+
+![The earlier proof of concept's early-exit cascade: blocks 1 to 18 and a trained head answer when the top probability is at least 0.71, otherwise a full-depth pass reads the label logits](images/early-exit-cascade.svg)
 
 ## Determinism and its limits
 

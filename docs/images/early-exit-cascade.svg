@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 540" width="1000" height="540" role="img" aria-labelledby="title desc">
+<title id="title">Early-exit cascade from the earlier proof of concept</title>
+<desc id="desc">Not part of riderless. A prompt runs through Gemma blocks 1 to 18 only; a trained linear head turns the block-18 residual into calibrated probabilities over three banking intents. If the top probability is at least 0.71 the early answer is accepted (112 of 120 cases, median 16.92 ms). Otherwise a separate full context prefills the same prompt through all 30 blocks and reads the A, B, C label logits (8 of 120 cases, median 44.58 ms). Median latency fell from 27.98 to 17.01 ms while p95 rose from 32.37 to 43.60 ms.</desc>
+
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; font-size: 11px; }
+  .title { font-size: 16px; font-weight: 600; }
+  .b { font-weight: 600; font-size: 12px; }
+  .sub, .note { fill: #59636e; font-size: 10.5px; }
+  .tag, .tick { fill: #59636e; font-size: 9.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+  .chip { fill: #ffffff; font-size: 9.5px; font-weight: 600; }
+  .good { fill: #1a7f37; }
+  .warn { fill: #9a6700; }
+  .bg { fill: #ffffff; }
+  .panel { fill: #f6f8fa; stroke: #d1d9e0; }
+  .box { fill: #ffffff; stroke: #d1d9e0; }
+  .early { fill: #0969da; }
+  .full { fill: #9a6700; }
+  .off { fill: none; stroke: #afb8c1; stroke-dasharray: 2 2; }
+  .gate { fill: #ffffff; stroke: #59636e; stroke-width: 1.5; }
+  .accept { fill: #dafbe1; stroke: #1a7f37; }
+  .fallback { fill: #fff8c5; stroke: #9a6700; }
+  .rule { stroke: #d1d9e0; }
+  .arrow { stroke: #818b98; stroke-width: 1.5; fill: none; }
+  #ah path { fill: #818b98; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #e6edf3; }
+    .sub, .note, .tag, .tick { fill: #9198a1; }
+    .chip { fill: #0d1117; }
+    .good { fill: #3fb950; }
+    .warn { fill: #d29922; }
+    .bg { fill: #0d1117; }
+    .panel { fill: #151b23; stroke: #3d444d; }
+    .box, .gate { fill: #0d1117; stroke: #3d444d; }
+    .gate { stroke: #9198a1; }
+    .early { fill: #4493f8; }
+    .full { fill: #d29922; }
+    .off { stroke: #656c76; }
+    .accept { fill: #0f2a19; stroke: #3fb950; }
+    .fallback { fill: #2e2408; stroke: #d29922; }
+    .rule { stroke: #3d444d; }
+    .arrow { stroke: #656c76; }
+    #ah path { fill: #656c76; }
+  }
+</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="0" y="0" width="1000" height="540" class="bg"/>
+<text x="20" y="30" class="title">Early-exit cascade</text>
+<text x="172" y="30" class="sub">earlier proof of concept, not part of riderless</text>
+<text x="20" y="50" class="sub">One fixed three-intent banking task on the same Gemma 4 26B-A4B GGUF. The riderless worker always reads full depth.</text>
+<rect x="20" y="108" width="140" height="90" rx="6" class="box"/>
+<text x="32" y="130" class="b">Prompt</text>
+<text x="32" y="150" class="note">banking message,</text>
+<text x="32" y="165" class="note">intents A, B, C</text>
+<text x="32" y="180" class="note">context cleared</text>
+<line x1="162" y1="153" x2="183" y2="153" class="arrow" marker-end="url(#ah)"/>
+<rect x="185" y="72" width="360" height="160" rx="10" class="panel"/>
+<text x="197" y="94" class="b">Early context: blocks 1 to 18 only</text>
+<rect x="197.0" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="208.3" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="219.6" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="230.9" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="242.2" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="253.5" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="264.8" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="276.1" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="287.4" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="298.7" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="310.0" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="321.3" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="332.6" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="343.9" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="355.20000000000005" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="366.5" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="377.8" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="389.1" y="106" width="10" height="26" rx="2" class="early"/>
+<rect x="400.4" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="411.70000000000005" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="423.0" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="434.3" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="445.6" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="456.90000000000003" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="468.20000000000005" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="479.5" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="490.8" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="502.1" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="513.4000000000001" y="106" width="10" height="26" rx="2" class="off"/>
+<rect x="524.7" y="106" width="10" height="26" rx="2" class="off"/>
+<text x="202" y="146" class="tick" text-anchor="middle">1</text>
+<text x="394.1" y="146" class="tick" text-anchor="middle">18</text>
+<text x="529.7" y="146" class="tick" text-anchor="middle">30</text>
+<text x="536" y="160" class="tag" text-anchor="end">blocks 19-30, final norm, vocab head: not built</text>
+<text x="197" y="188" class="note">block-18 residual (2,816-d) → trained linear head</text>
+<text x="197" y="206" class="note">→ softmax(head logits / 2.712): calibrated p</text>
+<text x="197" y="222" class="note">over the three intents</text>
+<line x1="547" y1="153" x2="573" y2="153" class="arrow" marker-end="url(#ah)"/>
+<polygon points="575,153 650,98 725,153 650,208" class="gate"/>
+<text x="650" y="150" class="b" text-anchor="middle">max p ≥ 0.71 ?</text>
+<text x="650" y="167" class="tag" text-anchor="middle">picked on validation</text>
+<line x1="727" y1="153" x2="763" y2="153" class="arrow" marker-end="url(#ah)"/>
+<text x="745" y="145" class="tag good" text-anchor="middle">yes</text>
+<rect x="765" y="88" width="215" height="130" rx="8" class="accept"/>
+<text x="779" y="110" class="b good">Accept early</text>
+<text x="779" y="130" class="note">route: early</text>
+<text x="779" y="146" class="note">calibrated probe probabilities</text>
+<text x="779" y="178" class="mono">112 of 120 cases, 109 correct</text>
+<text x="779" y="196" class="mono">median 16.92 ms</text>
+<line x1="650" y1="210" x2="650" y2="268" class="arrow" marker-end="url(#ah)"/>
+<text x="660" y="244" class="tag warn">no</text>
+<rect x="185" y="270" width="540" height="138" rx="10" class="panel"/>
+<text x="197" y="292" class="b">Fallback: full context, same weights, prompt prefilled again</text>
+<rect x="197.0" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="208.3" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="219.6" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="230.9" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="242.2" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="253.5" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="264.8" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="276.1" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="287.4" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="298.7" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="310.0" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="321.3" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="332.6" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="343.9" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="355.20000000000005" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="366.5" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="377.8" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="389.1" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="400.4" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="411.70000000000005" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="423.0" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="434.3" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="445.6" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="456.90000000000003" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="468.20000000000005" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="479.5" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="490.8" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="502.1" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="513.4000000000001" y="304" width="10" height="26" rx="2" class="full"/>
+<rect x="524.7" y="304" width="10" height="26" rx="2" class="full"/>
+<text x="202" y="344" class="tick" text-anchor="middle">1</text>
+<text x="529.7" y="344" class="tick" text-anchor="middle">30</text>
+<rect x="542" y="304" width="70" height="26" rx="2" class="full"/>
+<text x="577" y="321" class="chip" text-anchor="middle">vocab head</text>
+<text x="197" y="372" class="note">final-position logits at A, B, C → softmax over the three labels:</text>
+<text x="197" y="390" class="note">the readout riderless ships, run here only after the early pass</text>
+<line x1="727" y1="339" x2="763" y2="339" class="arrow" marker-end="url(#ah)"/>
+<rect x="765" y="270" width="215" height="138" rx="8" class="fallback"/>
+<text x="779" y="292" class="b warn">Full-depth answer</text>
+<text x="779" y="312" class="note">route: full</text>
+<text x="779" y="328" class="note">LM probabilities over A, B, C,</text>
+<text x="779" y="344" class="note">not covered by the head's calibration</text>
+<text x="779" y="372" class="mono">8 of 120 cases, 5 correct</text>
+<text x="779" y="390" class="mono">median 44.58 ms, both passes</text>
+<line x1="20" y1="428" x2="330" y2="428" class="rule"/>
+<text x="20" y="448" class="b">How 0.71 was chosen</text>
+<text x="20" y="467" class="note">Validation split only, grid 0.50 to 1.00.</text>
+<text x="20" y="482" class="note">Lowest threshold with at least 20 cases</text>
+<text x="20" y="497" class="note">accepted, 95%+ accepted accuracy, and</text>
+<text x="20" y="512" class="note">cascade accuracy at least the full model&#x27;s.</text>
+<text x="20" y="527" class="note">If none qualifies, the early pass is skipped.</text>
+<line x1="350" y1="428" x2="660" y2="428" class="rule"/>
+<text x="350" y="448" class="b">What it bought, 120 cases × 4 rounds</text>
+<text x="350" y="467" class="note">median 27.98 → 17.01 ms</text>
+<text x="350" y="482" class="note">p95 32.37 → 43.60 ms: a fallback pays twice</text>
+<text x="350" y="497" class="note">114 vs 113 of 120 correct</text>
+<text x="350" y="512" class="note">+0.56 GiB for the second context</text>
+<line x1="680" y1="428" x2="990" y2="428" class="rule"/>
+<text x="680" y="448" class="b">Why riderless reads full depth</text>
+<text x="680" y="467" class="note">The head is trained for one task&#x27;s labels;</text>
+<text x="680" y="482" class="note">a caller&#x27;s arbitrary question has none.</text>
+<text x="680" y="497" class="note">None of the 8 fallbacks changed the early</text>
+<text x="680" y="512" class="note">answer. ADR 0001 set the head aside, and</text>
+<text x="680" y="527" class="note">the worker refuses an early-exit override.</text>
+</svg>
