@@ -62,6 +62,7 @@ Usage (so1 and the suites both have to be importable):
         --out outputs/competitor-so1-v1-separate \\
         --mode separate \\
         --helper build/so1-probe/riderless-so1-probe \\
+        --runtime-dir build/llama-base/runtime/bin \\
         --model-path /path/to/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \\
         --tokenizer google/gemma-4-26B-A4B-it \\
         --allow-gpu
@@ -175,6 +176,7 @@ class LlamaCppBackend:
         model_path: Path,
         tokenizer: Any,
         *,
+        runtime_dir: Path,
         context: int,
         batch: int,
         ubatch: int,
@@ -187,6 +189,8 @@ class LlamaCppBackend:
             str(executable),
             "--model",
             str(model_path),
+            "--runtime-dir",
+            str(runtime_dir),
             "--context",
             str(context),
             "--batch",
@@ -822,6 +826,7 @@ def run(args: argparse.Namespace) -> int:
         args.helper,
         args.model_path,
         tokenizer,
+        runtime_dir=args.runtime_dir,
         context=args.context,
         batch=args.batch_size,
         ubatch=args.batch_size,
@@ -1069,6 +1074,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--mode", choices=("separate", "packed"), required=True)
     parser.add_argument("--helper", type=Path, required=True)
+    parser.add_argument(
+        "--runtime-dir",
+        type=Path,
+        required=True,
+        help="directory holding the ggml backend libraries the helper dlopens, "
+        "normally the base runtime's runtime/bin",
+    )
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument(
         "--tokenizer",

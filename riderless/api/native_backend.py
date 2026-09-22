@@ -27,6 +27,7 @@ from riderless.api.native.build import (
     digest,
     is_tested_revision,
 )
+from riderless.api.native.bundle import read_manifest, resolve_manifest_paths
 from riderless.api.schema import BackendProfile, WorkerBatchResult
 
 LOGGER = logging.getLogger("riderless.api.native")
@@ -107,9 +108,12 @@ class NativeBackend:
         ):
             if not path.is_file():
                 raise ValueError(f"{name} file is missing")
-        manifest: Any = json.loads(self.manifest_path.read_text())
-        if not isinstance(manifest, dict):
-            raise TypeError("manifest must be an object")
+        manifest = read_manifest(self.manifest_path)
+        # A schema 2 manifest names its executable and runtime relative to
+        # itself, so the bundle verifies wherever it was unpacked; a schema 1
+        # manifest keeps its absolute paths and is read unchanged. Every hash
+        # check below is the same either way.
+        executable, runtime_dir = resolve_manifest_paths(manifest, self.manifest_path)
         # Which llama.cpp this was built against is provenance, not integrity:
         # every hash below is checked whatever the revision turns out to be.
         # A revision other than the tested one only earns a warning, because
@@ -117,7 +121,7 @@ class NativeBackend:
         revision = manifest.get("llama_revision")
         if not isinstance(revision, str) or not revision:
             raise ValueError("manifest does not name a llama revision")
-        if Path(str(manifest.get("executable", ""))).resolve() != self.worker_path:
+        if executable != self.worker_path:
             raise ValueError("configured worker differs from manifest")
         if digest(self.worker_path) != manifest.get("executable_sha256"):
             raise ValueError("worker hash differs from manifest")
@@ -127,7 +131,6 @@ class NativeBackend:
             raise ValueError("manifest enables callbacks")
         if manifest.get("execution_mode") != "full":
             raise ValueError("manifest is not full-only")
-        runtime_dir = Path(str(manifest.get("runtime_dir", ""))).resolve()
         checksums = manifest.get("runtime_sha256")
         if not runtime_dir.is_dir() or not isinstance(checksums, dict) or not checksums:
             raise ValueError("manifest runtime inventory is incomplete")
@@ -174,6 +177,11 @@ class NativeBackend:
                 model_sha256,
                 "--runtime-sha256",
                 runtime_sha256,
+                # The worker dlopens its ggml backends from the directory this
+                # names. It is passed rather than compiled in, so the binary
+                # stays valid wherever its bundle was unpacked.
+                "--runtime-dir",
+                str(runtime_dir),
                 "--context",
                 str(self.context_size),
                 "--batch",

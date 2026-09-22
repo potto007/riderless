@@ -39,6 +39,10 @@ struct settings {
     std::string model_path;
     std::string model_sha256;
     std::string runtime_sha256;
+    // Where the ggml backends are dlopened from. It is an argument rather than
+    // a compile-time constant so one built binary stays valid wherever its
+    // bundle is unpacked; the caller passes the directory it just hashed.
+    std::string runtime_dir;
     int context = 2048;
     int batch = 256;
     int ubatch = 256;
@@ -78,8 +82,8 @@ settings parse_args(int argc, char ** argv) {
     bool gpu = false;
     bool batched = false;
     const std::set<std::string> valued{
-        "--model", "--model-sha256", "--runtime-sha256", "--context",
-        "--batch", "--ubatch", "--threads", "--max-questions",
+        "--model", "--model-sha256", "--runtime-sha256", "--runtime-dir",
+        "--context", "--batch", "--ubatch", "--threads", "--max-questions",
         "--batched-context",
     };
     for (int index = 1; index < argc; ++index) {
@@ -100,14 +104,18 @@ settings parse_args(int argc, char ** argv) {
         values[key] = argv[++index];
     }
     for (const auto * key : {
-             "--model", "--model-sha256", "--runtime-sha256", "--context",
-             "--batch", "--ubatch", "--threads", "--max-questions"}) {
+             "--model", "--model-sha256", "--runtime-sha256", "--runtime-dir",
+             "--context", "--batch", "--ubatch", "--threads", "--max-questions"}) {
         if (!values.count(key)) throw std::runtime_error(std::string("Missing ") + key);
     }
     settings result;
     result.model_path = values.at("--model");
     result.model_sha256 = values.at("--model-sha256");
     result.runtime_sha256 = values.at("--runtime-sha256");
+    result.runtime_dir = values.at("--runtime-dir");
+    if (result.runtime_dir.empty()) {
+        throw std::runtime_error("runtime-dir must not be empty");
+    }
     result.context = parse_positive(values.at("--context"), "context");
     result.batch = parse_positive(values.at("--batch"), "batch");
     result.ubatch = parse_positive(values.at("--ubatch"), "ubatch");
@@ -605,7 +613,7 @@ int main(int argc, char ** argv) {
     try {
         const settings config = parse_args(argc, argv);
         reject_incompatible_environment();
-        ggml_backend_load_all_from_path(RIDERLESS_BACKEND_DIR);
+        ggml_backend_load_all_from_path(config.runtime_dir.c_str());
         if (config.gpu && !ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU)) {
             throw std::runtime_error("GPU opt-in requested but no GPU backend is available");
         }

@@ -27,6 +27,27 @@ foreach(name llama llama-common ggml ggml-base ggml-cpu)
     find_library(LIB_${name} NAMES ${name} PATHS "${LLAMA_LIB}" NO_DEFAULT_PATH REQUIRED)
 endforeach()
 
+# A bundle is <dir>/build/<binary> beside <dir>/runtime/*.so, so an
+# $ORIGIN-relative run path finds the libraries wherever the bundle was
+# unpacked and puts no build-machine path into the binary. It covers this
+# binary's own DT_NEEDED entries and no more: the llama.cpp libraries carry
+# their own DT_RUNPATH, which suppresses run-path inheritance for anything
+# they pull in, and rewriting theirs would change the sha256 the manifest
+# pins. LD_LIBRARY_PATH, which the API backend exports and which outranks
+# DT_RUNPATH, is what covers those transitive loads and the dlopened backends.
+#
+# BUILD_WITH_INSTALL_RPATH is what keeps the run path to exactly that one
+# entry: without it CMake also appends the absolute directory the llama.cpp
+# libraries were linked from, which would put the build machine's path into
+# the shipped binary and make its sha256 depend on where it was built.
+set(RIDERLESS_BUNDLE_RPATH "$ORIGIN/../runtime")
+function(riderless_relocatable target)
+    set_target_properties(${target} PROPERTIES
+        INSTALL_RPATH "${RIDERLESS_BUNDLE_RPATH}"
+        BUILD_WITH_INSTALL_RPATH ON)
+    target_link_options(${target} PRIVATE "LINKER:--disable-new-dtags")
+endfunction()
+
 add_executable(riderless-worker
     worker.cpp
     "${SHA256_ROOT}/sha256/sha256.c")
@@ -39,10 +60,8 @@ target_include_directories(riderless-worker SYSTEM PRIVATE
     "${SHA256_ROOT}")
 target_link_libraries(riderless-worker PRIVATE
     ${LIB_llama-common} ${LIB_llama} ${LIB_ggml} ${LIB_ggml-base})
-target_compile_definitions(riderless-worker PRIVATE
-    RIDERLESS_BACKEND_DIR="${LLAMA_LIB}")
 target_compile_options(riderless-worker PRIVATE -O3 -Wall -Wextra -Werror)
-set_target_properties(riderless-worker PROPERTIES BUILD_RPATH "${LLAMA_LIB}")
+riderless_relocatable(riderless-worker)
 
 # Competitor benchmarks need arbitrary token sequences scored at arbitrary
 # readout positions on this exact runtime. That is not the worker's protocol,
@@ -54,10 +73,8 @@ target_include_directories(riderless-so1-probe SYSTEM PRIVATE
     "${LLAMA_SOURCE}/ggml/include"
     "${LLAMA_SOURCE}/vendor")
 target_link_libraries(riderless-so1-probe PRIVATE ${LIB_llama} ${LIB_ggml} ${LIB_ggml-base})
-target_compile_definitions(riderless-so1-probe PRIVATE
-    RIDERLESS_BACKEND_DIR="${LLAMA_LIB}")
 target_compile_options(riderless-so1-probe PRIVATE -O3 -Wall -Wextra -Werror)
-set_target_properties(riderless-so1-probe PROPERTIES BUILD_RPATH "${LLAMA_LIB}")
+riderless_relocatable(riderless-so1-probe)
 
 add_executable(riderless-worker-utils-test worker-utils-test.cpp)
 target_compile_options(riderless-worker-utils-test PRIVATE -Wall -Wextra -Werror)
