@@ -1,4 +1,4 @@
-"""Serve or batch the isolated non-generative API."""
+"""Serve or batch the isolated non-generative API, and install its worker."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from riderless.api.app import (
     _default_backend,
     create_app,
 )
+from riderless.api.native import fetch as worker_fetch
 from riderless.api.schema import DecisionRequest, DecisionResponse
 
 
@@ -134,7 +135,15 @@ def main() -> None:
     _add_runtime_arguments(serve)
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8090)
+    worker = commands.add_parser("worker", help="manage the native worker install")
+    worker_commands = worker.add_subparsers(dest="worker_command", required=True)
+    fetch = worker_commands.add_parser(
+        "fetch", help="download and verify a published worker bundle"
+    )
+    worker_fetch.add_arguments(fetch)
     args = parser.parse_args()
+    if args.command == "worker":
+        raise SystemExit(worker_fetch.run(fetch, args))
     config = _config(args)
     if args.command == "serve":
         uvicorn.run(create_app(config), host=args.host, port=args.port)
