@@ -122,7 +122,10 @@ and [docs/results/batched-mode.md](docs/results/batched-mode.md).
   build script fetches and compiles the tested release, `v0.4.1`.
 - For the prebuilt `cuda13` bundle, an NVIDIA driver of 580.65 or newer; for
   `cuda12`, 525.60 or newer. The bundle carries its own `libcudart`,
-  `libcublas` and `libcublasLt`, so no CUDA toolkit is needed to run it.
+  `libcublas` and `libcublasLt`, so no CUDA toolkit is needed to run it. The
+  one system library every bundle needs is OpenMP's `libgomp.so.1`
+  (`libgomp1` on Debian and Ubuntu, `libgomp` on Fedora), which a desktop
+  install already has and a minimal container may not.
 - 17 GB of disk for the Gemma 4 26B-A4B GGUF, which you download yourself
   under its own licence terms; it is not redistributed here. A cuda13 worker
   bundle is a further ~450 MB, most of it NVIDIA's cuBLAS.

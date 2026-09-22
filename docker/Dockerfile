@@ -17,9 +17,11 @@ FROM nvidia/cuda:13.4.1-runtime-ubuntu24.04
 ARG BUNDLE
 
 # python3 is the interpreter; the venv keeps pip out of the system install,
-# which Ubuntu 24.04 marks externally managed.
+# which Ubuntu 24.04 marks externally managed. libgomp1 is the one system
+# library the bundle does not carry: ggml's CPU backend links OpenMP, and the
+# CUDA runtime image ships without it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-venv \
+    && apt-get install -y --no-install-recommends python3 python3-venv libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/riderless

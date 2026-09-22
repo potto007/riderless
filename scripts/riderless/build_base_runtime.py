@@ -177,6 +177,11 @@ def configure(
         "-DLLAMA_BUILD_SERVER=OFF",
         "-DLLAMA_BUILD_APP=OFF",
         "-DLLAMA_BUILD_UI=OFF",
+        # The worker never downloads anything, so the common library's HTTPS
+        # support is dead weight. Off, libllama-common stops linking the
+        # system's libssl, which keeps a published bundle from depending on
+        # whichever OpenSSL the user's distribution ships.
+        "-DLLAMA_OPENSSL=OFF",
         f"-DGGML_CUDA={'ON' if cuda else 'OFF'}",
     ]
     if not native:

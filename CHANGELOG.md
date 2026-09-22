@@ -9,7 +9,7 @@ worker protocol can change between minor versions without a deprecation
 period. Each release records which llama.cpp revision and which model file its
 published measurements were taken on.
 
-## Unreleased
+## 0.2.0 - 2026-09-22
 
 ### Added
 
@@ -56,6 +56,14 @@ published measurements were taken on.
 - `riderless.api.native.build` copies the base runtime into the bundle and
   re-hashes the copy, builds in a scratch directory it removes on success, and
   leaves `build/` holding only the executable.
+- `build_base_runtime.py` configures llama.cpp with `LLAMA_OPENSSL=OFF`. The
+  worker never downloads anything, and without it `libllama-common` no longer
+  links the build machine's libssl, which a published bundle would otherwise
+  require on the user's system. The only system library a bundle needs is
+  OpenMP's `libgomp.so.1`.
+- A worker that dies before its handshake now reports its last stderr lines
+  in the `native backend failed to start` error, so a missing shared library
+  or a rejected argument is named instead of hidden behind "closed stdout".
 
 ## 0.1.0 - 2026-09-22
 

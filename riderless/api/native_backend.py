@@ -255,7 +255,14 @@ class NativeBackend:
             raise
         except Exception as error:
             await self._invalidate()
-            raise BackendUnavailableError("native backend failed to start") from error
+            # A worker that dies before the handshake usually says why on
+            # stderr (a missing shared library, a model it refuses); the
+            # closed-stdout error alone hides that one line.
+            detail = f"native backend failed to start: {error}"
+            tail = [line for line in self._stderr_tail if line.strip()][-5:]
+            if tail:
+                detail += "; worker stderr: " + " | ".join(tail)
+            raise BackendUnavailableError(detail) from error
 
     async def _drain_stderr(self) -> None:
         process = self._process

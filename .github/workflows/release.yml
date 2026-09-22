@@ -161,6 +161,31 @@ jobs:
         with:
           subject-path: dist/*.tar.gz
 
+      # A pushed tag has no release yet; create one from the changelog section
+      # for that version so the assets have somewhere to land. An existing
+      # release (a dispatch rerun, or one made by hand) is left as it is.
+      - name: Ensure the release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            exit 0
+          fi
+          version="${tag#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " v " " { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "No CHANGELOG section for ${version}; using generated notes"
+            gh release create "$tag" --title "riderless ${version}" --generate-notes
+          else
+            gh release create "$tag" --title "riderless ${version}" --notes-file notes.md
+          fi
+
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
