@@ -1,6 +1,6 @@
 [project]
 name = "riderless"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local, non-generative decision API: typed questions answered from final-position logits, with zero generated tokens."
 readme = "README.md"
 requires-python = ">=3.12"
