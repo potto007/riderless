@@ -60,7 +60,9 @@ published measurements were taken on.
   worker never downloads anything, and without it `libllama-common` no longer
   links the build machine's libssl, which a published bundle would otherwise
   require on the user's system. The only system library a bundle needs is
-  OpenMP's `libgomp.so.1`.
+  OpenMP's `libgomp.so.1`. It also passes `GGML_CUDA_NCCL=OFF`: the NVIDIA
+  devel containers ship NCCL, and without the flag ggml links `libnccl.so.2`
+  into the CUDA backend of a published bundle.
 - A worker that dies before its handshake now reports its last stderr lines
   in the `native backend failed to start` error, so a missing shared library
   or a rejected argument is named instead of hidden behind "closed stdout".
