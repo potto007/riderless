@@ -44,6 +44,21 @@ target_compile_definitions(riderless-worker PRIVATE
 target_compile_options(riderless-worker PRIVATE -O3 -Wall -Wextra -Werror)
 set_target_properties(riderless-worker PROPERTIES BUILD_RPATH "${LLAMA_LIB}")
 
+# Competitor benchmarks need arbitrary token sequences scored at arbitrary
+# readout positions on this exact runtime. That is not the worker's protocol,
+# so it is a second, separate binary that shares only the linked libraries and
+# the context configuration.
+add_executable(riderless-so1-probe so1_probe.cpp)
+target_include_directories(riderless-so1-probe SYSTEM PRIVATE
+    "${LLAMA_SOURCE}/include"
+    "${LLAMA_SOURCE}/ggml/include"
+    "${LLAMA_SOURCE}/vendor")
+target_link_libraries(riderless-so1-probe PRIVATE ${LIB_llama} ${LIB_ggml} ${LIB_ggml-base})
+target_compile_definitions(riderless-so1-probe PRIVATE
+    RIDERLESS_BACKEND_DIR="${LLAMA_LIB}")
+target_compile_options(riderless-so1-probe PRIVATE -O3 -Wall -Wextra -Werror)
+set_target_properties(riderless-so1-probe PROPERTIES BUILD_RPATH "${LLAMA_LIB}")
+
 add_executable(riderless-worker-utils-test worker-utils-test.cpp)
 target_compile_options(riderless-worker-utils-test PRIVATE -Wall -Wextra -Werror)
 
