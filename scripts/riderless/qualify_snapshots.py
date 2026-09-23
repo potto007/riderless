@@ -672,10 +672,10 @@ def run(args: argparse.Namespace) -> Row:
                     "files": files,
                 }
             )
-            again = evaluate(fresh, snapshot, entry["questions"])
+            reloaded = evaluate(fresh, snapshot, entry["questions"])
             deltas = [
                 prob_delta(expected, row["label_logits"])
-                for expected, row in zip(entry["expected"], again, strict=True)
+                for expected, row in zip(entry["expected"], reloaded, strict=True)
             ]
             gates.check(
                 "restore_identity",
