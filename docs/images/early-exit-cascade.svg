@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 540" width="1000" height="540" role="img" aria-labelledby="title desc">
 <title id="title">Early-exit cascade from the earlier proof of concept</title>
-<desc id="desc">Not part of riderless. A prompt runs through Gemma blocks 1 to 18 only; a trained linear head turns the block-18 residual into calibrated probabilities over three banking intents. If the top probability is at least 0.71 the early answer is accepted (112 of 120 cases, median 16.92 ms). Otherwise a separate full context prefills the same prompt through all 30 blocks and reads the A, B, C label logits (8 of 120 cases, median 44.58 ms). Median latency fell from 27.98 to 17.01 ms while p95 rose from 32.37 to 43.60 ms.</desc>
+<desc id="desc">Not part of unridden. A prompt runs through Gemma blocks 1 to 18 only; a trained linear head turns the block-18 residual into calibrated probabilities over three banking intents. If the top probability is at least 0.71 the early answer is accepted (112 of 120 cases, median 16.92 ms). Otherwise a separate full context prefills the same prompt through all 30 blocks and reads the A, B, C label logits (8 of 120 cases, median 44.58 ms). Median latency fell from 27.98 to 17.01 ms while p95 rose from 32.37 to 43.60 ms.</desc>
 
 <style>
   text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; font-size: 11px; }
@@ -47,8 +47,8 @@
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="0" y="0" width="1000" height="540" class="bg"/>
 <text x="20" y="30" class="title">Early-exit cascade</text>
-<text x="172" y="30" class="sub">earlier proof of concept, not part of riderless</text>
-<text x="20" y="50" class="sub">One fixed three-intent banking task on the same Gemma 4 26B-A4B GGUF. The riderless worker always reads full depth.</text>
+<text x="172" y="30" class="sub">earlier proof of concept, not part of unridden</text>
+<text x="20" y="50" class="sub">One fixed three-intent banking task on the same Gemma 4 26B-A4B GGUF. The unridden worker always reads full depth.</text>
 <rect x="20" y="108" width="140" height="90" rx="6" class="box"/>
 <text x="32" y="130" class="b">Prompt</text>
 <text x="32" y="150" class="note">banking message,</text>
@@ -145,7 +145,7 @@
 <rect x="542" y="304" width="70" height="26" rx="2" class="full"/>
 <text x="577" y="321" class="chip" text-anchor="middle">vocab head</text>
 <text x="197" y="372" class="note">final-position logits at A, B, C → softmax over the three labels:</text>
-<text x="197" y="390" class="note">the readout riderless ships, run here only after the early pass</text>
+<text x="197" y="390" class="note">the readout unridden ships, run here only after the early pass</text>
 <line x1="727" y1="339" x2="763" y2="339" class="arrow" marker-end="url(#ah)"/>
 <rect x="765" y="270" width="215" height="138" rx="8" class="fallback"/>
 <text x="779" y="292" class="b warn">Full-depth answer</text>
@@ -168,7 +168,7 @@
 <text x="350" y="497" class="note">114 vs 113 of 120 correct</text>
 <text x="350" y="512" class="note">+0.56 GiB for the second context</text>
 <line x1="680" y1="428" x2="990" y2="428" class="rule"/>
-<text x="680" y="448" class="b">Why riderless reads full depth</text>
+<text x="680" y="448" class="b">Why unridden reads full depth</text>
 <text x="680" y="467" class="note">The head is trained for one task&#x27;s labels;</text>
 <text x="680" y="482" class="note">a caller&#x27;s arbitrary question has none.</text>
 <text x="680" y="497" class="note">None of the 8 fallbacks changed the early</text>

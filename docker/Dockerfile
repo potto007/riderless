@@ -1,4 +1,4 @@
-# riderless, CUDA 13 flavor: the package plus an already-built worker bundle.
+# unridden, CUDA 13 flavor: the package plus an already-built worker bundle.
 #
 # The image compiles nothing. It expects the cuda13 tarball the release
 # workflow produced to be present in the build context, and unpacks it where
@@ -6,7 +6,7 @@
 # directory holding your GGUF at /models.
 #
 #   docker build -f docker/Dockerfile \
-#     --build-arg BUNDLE=dist/riderless-worker-0.2.0-linux-x64-cuda13.tar.gz .
+#     --build-arg BUNDLE=dist/unridden-worker-0.3.0-linux-x64-cuda13.tar.gz .
 #   docker run --gpus all -p 8090:8090 -v /path/to/models:/models:ro <image>
 #
 # The runtime base carries the CUDA runtime, and the bundle carries its own
@@ -24,16 +24,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-venv libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-ENV VIRTUAL_ENV=/opt/riderless
+ENV VIRTUAL_ENV=/opt/unridden
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 RUN python3 -m venv "${VIRTUAL_ENV}"
 
-WORKDIR /srv/riderless
+WORKDIR /srv/unridden
 COPY pyproject.toml README.md LICENSE NOTICE ./
-COPY riderless ./riderless
+COPY unridden ./unridden
 RUN pip install --no-cache-dir .
 
-# `build/api-worker/build/riderless-worker` and `build/api-worker/build.json`
+# `build/api-worker/build/unridden-worker` and `build/api-worker/build.json`
 # are ApiConfig's defaults, so serve needs no worker flags.
 # ADD extracts a local tar archive into the destination, so the bundle lands
 # unpacked and the tarball itself never becomes a layer.
@@ -42,11 +42,11 @@ ADD ${BUNDLE} build/api-worker/
 # One GGUF, mounted read-only. The name is ApiConfig's default; override it
 # with --model-path on the command line if yours is named differently.
 VOLUME ["/models"]
-ENV RIDERLESS_MODEL=/models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
+ENV UNRIDDEN_MODEL=/models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
 
 EXPOSE 8090
 # One request at a time and no auth: put this behind something (see the
 # README's Limitations) before exposing it beyond a trusted network.
 ENTRYPOINT ["/bin/sh", "-c", \
-  "exec python -m riderless.api.cli serve --gpu --host 0.0.0.0 --port 8090 \
-   --model-path \"$RIDERLESS_MODEL\" \"$@\"", "riderless"]
+  "exec python -m unridden.api.cli serve --gpu --host 0.0.0.0 --port 8090 \
+   --model-path \"$UNRIDDEN_MODEL\" \"$@\"", "unridden"]

@@ -2,7 +2,7 @@
 
 ## Supported code
 
-riderless is in early development and has no tagged releases yet. We
+unridden is in early development and has no tagged releases yet. We
 investigate suspected vulnerabilities in the current `main` branch. Include
 the commit you tested so we can identify the affected code.
 
@@ -11,7 +11,7 @@ exist, this section will identify which versions receive security fixes.
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/potto007/riderless/security/advisories/new).
+Use [GitHub private vulnerability reporting](https://github.com/potto007/unridden/security/advisories/new).
 Do not open a public issue or pull request with exploit details or live
 credentials. Reports are reviewed by the maintainer, `potto007`, through the
 private advisory; people needed to investigate or fix the problem may be
@@ -38,11 +38,11 @@ report and avoid adding further exploit detail there.
 
 Reports about these components belong here:
 
-- The `riderless` Python package: the HTTP application, the request compiler,
+- The `unridden` Python package: the HTTP application, the request compiler,
   the label mapping and schema validation, and the CLI.
-- The native worker under `riderless/api/native`, its build script, and the
+- The native worker under `unridden/api/native`, its build script, and the
   manifest and hash pinning it performs at build time and at startup.
-- The validation and use-case scripts under `scripts/riderless`.
+- The validation and use-case scripts under `scripts/unridden`.
 
 Examples of what we consider in scope: a caller-supplied state or label set
 that escapes prompt or protocol framing, a request that makes the worker read
@@ -65,7 +65,7 @@ Out of scope here:
   Report the local fault and leave the third-party numbers out.
 
 Ordinary bugs, usage questions, and feature requests belong in
-[GitHub Issues](https://github.com/potto007/riderless/issues).
+[GitHub Issues](https://github.com/potto007/unridden/issues).
 Conduct concerns follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Triage and disclosure

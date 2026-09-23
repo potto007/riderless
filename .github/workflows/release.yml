@@ -98,11 +98,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.cuda }}" = "true" ]; then
-            uv run --no-sync python scripts/riderless/build_base_runtime.py \
+            uv run --no-sync python scripts/unridden/build_base_runtime.py \
               --out build/llama-base --no-native \
               --cuda --cuda-architectures "${CUDA_ARCHITECTURES}"
           else
-            uv run --no-sync python scripts/riderless/build_base_runtime.py \
+            uv run --no-sync python scripts/unridden/build_base_runtime.py \
               --out build/llama-base --no-native
           fi
 
@@ -121,15 +121,15 @@ jobs:
             [ -e "$stubs/libcuda.so.1" ] || ln -s libcuda.so "$stubs/libcuda.so.1"
             export LDFLAGS="-Wl,-rpath-link,$stubs"
           fi
-          uv run --no-sync python -m riderless.api.native.build \
+          uv run --no-sync python -m unridden.api.native.build \
             --base build/llama-base --output build/api-worker
 
       - name: Pack the bundle
         id: pack
         shell: bash
         run: |
-          name="riderless-worker-${{ steps.version.outputs.version }}-linux-x64-${{ matrix.flavor }}.tar.gz"
-          uv run --no-sync python -m riderless.api.native.bundle pack \
+          name="unridden-worker-${{ steps.version.outputs.version }}-linux-x64-${{ matrix.flavor }}.tar.gz"
+          uv run --no-sync python -m unridden.api.native.bundle pack \
             --directory build/api-worker --output "dist/${name}"
           echo "name=${name}" >> "$GITHUB_OUTPUT"
 
@@ -194,9 +194,9 @@ jobs:
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
             echo "No CHANGELOG section for ${version}; using generated notes"
-            gh release create "$tag" --title "riderless ${version}" --generate-notes
+            gh release create "$tag" --title "unridden ${version}" --generate-notes
           else
-            gh release create "$tag" --title "riderless ${version}" --notes-file notes.md
+            gh release create "$tag" --title "unridden ${version}" --notes-file notes.md
           fi
 
       - name: Upload to the release
@@ -241,7 +241,7 @@ jobs:
           file: docker/Dockerfile
           push: true
           build-args: |
-            BUNDLE=dist/riderless-worker-${{ steps.version.outputs.version }}-linux-x64-cuda13.tar.gz
+            BUNDLE=dist/unridden-worker-${{ steps.version.outputs.version }}-linux-x64-cuda13.tar.gz
           tags: |
-            ghcr.io/potto007/riderless:${{ steps.version.outputs.version }}-cuda13
-            ghcr.io/potto007/riderless:latest-cuda13
+            ghcr.io/potto007/unridden:${{ steps.version.outputs.version }}-cuda13
+            ghcr.io/potto007/unridden:latest-cuda13

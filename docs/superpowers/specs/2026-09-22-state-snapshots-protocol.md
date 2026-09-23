@@ -1,12 +1,12 @@
-# Snapshot worker protocol (`riderless-snapshot-v1`)
+# Snapshot worker protocol (`unridden-snapshot-v1`)
 
 Companion to `2026-09-22-state-snapshots-design.md`. This is the contract
-between the Python snapshot service (`riderless/api/snapshots/`) and the native
-`riderless-snapshot-worker` (`riderless/api/native/snapshots/`).
+between the Python snapshot service (`unridden/api/snapshots/`) and the native
+`unridden-snapshot-worker` (`unridden/api/native/snapshots/`).
 
 ## Runtime profile `split18-30-v1`
 
-- llama.cpp v0.4.1 plus `riderless/api/native/patches/gemma4-layer-range.patch`.
+- llama.cpp v0.4.1 plus `unridden/api/native/patches/gemma4-layer-range.patch`.
 - One model load, two contexts sharing its weights:
   - lower: blocks 0-17 (the spec's "blocks 1-18"), token input, owns their K/V;
   - upper: blocks 18-29 ("19-30"), residual input through `llama_batch.embd`
@@ -44,16 +44,16 @@ Errors: `{"type":"error","id":...,"code":C,"reason":R,"message":M}`.
 ## Handshake
 
 ```json
-{"type":"hello","protocol":"riderless-snapshot-v1","profile":"split18-30-v1",
- "model_id":"local-gemma-riderless-v1","model_name":"...","model_sha256":"<64hex>",
+{"type":"hello","protocol":"unridden-snapshot-v1","profile":"split18-30-v1",
+ "model_id":"local-gemma-unridden-v1","model_name":"...","model_sha256":"<64hex>",
  "runtime_sha256":"<64hex>","labels":["A",...],"label_token_ids":[...],
  "context_size":2048,"batch_size":256,"ubatch_size":256,"threads":8,
  "n_layer":30,"n_embd":2816,"split_block":18,"reference_context":false,
- "context_prompt_version":"riderless-gemma-context-v1",
+ "context_prompt_version":"unridden-gemma-context-v1",
  "generated_tokens":0,"callbacks_enabled":false}
 ```
 
-## Prompt profile `riderless-gemma-context-v1`
+## Prompt profile `unridden-gemma-context-v1`
 
 The native worker renders messages with the model's chat template (same call
 as the v1 worker) and tokenizes; the Python side never handles tokens.
@@ -151,7 +151,7 @@ the 18 id},"block_tokens":{"lower":0,"upper":N},"timing_ms":{...}}`.
 ```json
 {"type":"evaluate","id":"e1","snapshot_id":"snap_a30","readout_blocks":30,
  "questions":[{"id":"status","messages":[...],"answer_prefix":"Answer:\n",
-               "labels":["A","B"],"prompt_version":"riderless-gemma-context-v1",
+               "labels":["A","B"],"prompt_version":"unridden-gemma-context-v1",
                "save_as":null}]}
 ```
 

@@ -1,4 +1,4 @@
-riderless
+unridden
 Copyright 2026 Paul Otto
 
 This product includes software developed by Paul Otto.
@@ -25,7 +25,7 @@ published release artifact carries third-party binaries, the entry says so.
 
 llama.cpp (MIT License)
     https://github.com/ggml-org/llama.cpp
-    The native worker in riderless/api/native is compiled against a llama.cpp
+    The native worker in unridden/api/native is compiled against a llama.cpp
     checkout that the user provides at a pinned revision. Its headers, its
     bundled nlohmann/json, and its examples/gguf-hash/deps/sha256 helper are
     read from that checkout at build time. No llama.cpp or ggml file is copied

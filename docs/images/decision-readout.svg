@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 36 1000 530" width="1000" height="530" role="img" aria-labelledby="title desc">
-<title id="title">How a decision surfaces in riderless</title>
+<title id="title">How a decision surfaces in unridden</title>
 <desc id="desc">A request with one state and several questions is compiled into one prompt per question with options labelled A, B, C. The worker prefills the prompt, reads the last-position logits at the label token ids only, and generates no tokens. A softmax over those labels gives the probabilities, which become a Choice (argmax), a Score (expected level) or a Noul (probability of true).</desc>
 
 <style>
@@ -57,7 +57,7 @@
 <rect x="20" y="50" width="225" height="500" rx="10" class="panel"/>
 <text x="34" y="78" class="h"><tspan class="num">1</tspan>  Request</text>
 <text x="34" y="96" class="sub">one state, up to 32 questions</text>
-<text x="34" y="538" class="src">riderless/api/schema.py</text>
+<text x="34" y="538" class="src">unridden/api/schema.py</text>
 <text x="32" y="126" class="cap">STATE</text>
 <rect x="32" y="134" width="201" height="80" rx="6" class="box"/>
 <text x="42" y="152" class="mono">from: "customer"</text>
@@ -84,7 +84,7 @@
 <rect x="265" y="50" width="225" height="500" rx="10" class="panel"/>
 <text x="279" y="78" class="h"><tspan class="num">2</tspan>  Compile</text>
 <text x="279" y="96" class="sub">one prompt per question</text>
-<text x="279" y="538" class="src">riderless/api/compiler.py</text>
+<text x="279" y="538" class="src">unridden/api/compiler.py</text>
 <rect x="277" y="110" width="201" height="350" rx="6" class="box"/>
 <rect x="281" y="117" width="193" height="119.0" rx="4" class="shared"/>
 <text x="287" y="128.0" class="pmono">Use the supplied state to</text>
@@ -117,7 +117,7 @@
 <rect x="510" y="50" width="225" height="500" rx="10" class="panel"/>
 <text x="524" y="78" class="h"><tspan class="num">3</tspan>  Prefill, read logits</text>
 <text x="524" y="96" class="sub">full depth, no decode</text>
-<text x="524" y="538" class="src">riderless/api/native/worker.cpp</text>
+<text x="524" y="538" class="src">unridden/api/native/worker.cpp</text>
 <rect x="522" y="110" width="201" height="58" rx="8" class="model"/>
 <text x="622" y="134" class="b" text-anchor="middle">Gemma 4 26B-A4B</text>
 <text x="622" y="153" class="sub" text-anchor="middle">llama.cpp prefill of the prompt</text>
@@ -196,7 +196,7 @@
 <rect x="755" y="50" width="225" height="500" rx="10" class="panel"/>
 <text x="769" y="78" class="h"><tspan class="num">4</tspan>  Softmax, then type</text>
 <text x="769" y="96" class="sub">over the supplied labels only</text>
-<text x="769" y="538" class="src">riderless/api/mapping.py</text>
+<text x="769" y="538" class="src">unridden/api/mapping.py</text>
 <text x="767" y="128" class="pmono"><tspan class="lab">A</tspan> billing</text>
 <rect x="853" y="119" width="70" height="10" rx="2" class="track"/>
 <rect x="853" y="119" width="70.0" height="10" rx="2" class="pbar"/>

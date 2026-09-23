@@ -1,4 +1,4 @@
-<!-- Participation follows .github/CODE_OF_CONDUCT.md. Report vulnerabilities through https://github.com/potto007/riderless/security/advisories/new instead of a public PR. -->
+<!-- Participation follows .github/CODE_OF_CONDUCT.md. Report vulnerabilities through https://github.com/potto007/unridden/security/advisories/new instead of a public PR. -->
 
 ## Summary
 

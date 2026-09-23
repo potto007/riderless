@@ -1,7 +1,7 @@
-# Contributing to riderless
+# Contributing to unridden
 
 Bug reports, fixes, tests, documentation, and new use-case suites are welcome.
-riderless is in early development and has no tagged release, so the HTTP
+unridden is in early development and has no tagged release, so the HTTP
 contract, the CLI flags, and the native worker protocol can still change.
 
 Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report
@@ -86,14 +86,14 @@ and personal data out of code, fixtures, docs, and issue text.
 
 ## Find or propose work
 
-Search [existing issues](https://github.com/potto007/riderless/issues)
+Search [existing issues](https://github.com/potto007/unridden/issues)
 before opening one. Describe the problem you want to solve and how someone can
 reproduce it. For a substantial feature or a change to the HTTP contract or
 the worker protocol, discuss the approach in an issue before implementing it.
 Small fixes and documentation changes can go straight to a pull request.
 
-Issues labeled [good first issue](https://github.com/potto007/riderless/labels/good%20first%20issue)
-or [help wanted](https://github.com/potto007/riderless/labels/help%20wanted)
+Issues labeled [good first issue](https://github.com/potto007/unridden/labels/good%20first%20issue)
+or [help wanted](https://github.com/potto007/unridden/labels/help%20wanted)
 are places to look for work. Comment on an issue you plan to take so others
 can coordinate with you. New bug reports and feature requests start with
 `needs-triage`; maintainers handle the triage labels.
@@ -108,9 +108,9 @@ and a Gemma GGUF, which this repository does not ship.
 Fork the repository, clone your fork, and create a branch for your change:
 
 ```sh
-git clone https://github.com/YOUR_USERNAME/riderless.git
-cd riderless
-git remote add upstream https://github.com/potto007/riderless.git
+git clone https://github.com/YOUR_USERNAME/unridden.git
+cd unridden
+git remote add upstream https://github.com/potto007/unridden.git
 git switch -c fix/describe-the-change
 uv sync --dev
 ```
@@ -126,28 +126,28 @@ roughly 18 GiB of VRAM, so check your free VRAM before opting in with `--gpu`.
 Keep a pull request focused on one change. Match the surrounding style. For a
 behavior change, add a regression that exercises what a caller can observe
 through the HTTP API, the CLI, or the worker protocol; the tests in
-`riderless/tests` show the pattern.
+`unridden/tests` show the pattern.
 
 Run the checks CI runs, from the repository root:
 
 ```sh
 uv run ruff format --check .
 uv run ruff check .
-uv run mypy --strict --explicit-package-bases riderless scripts
+uv run mypy --strict --explicit-package-bases unridden scripts
 uv run pytest
 ```
 
 `uv run ruff format .` applies the formatting rather than just reporting it.
 
-The C++ helper test for `riderless/api/native/worker-utils.h` is
+The C++ helper test for `unridden/api/native/worker-utils.h` is
 self-contained and needs no llama.cpp:
 
 ```sh
 mkdir -p build
 c++ -std=c++17 -Wall -Wextra -Werror -O2 \
-  -o build/riderless-worker-utils-test \
-  riderless/api/native/worker-utils-test.cpp
-./build/riderless-worker-utils-test
+  -o build/unridden-worker-utils-test \
+  unridden/api/native/worker-utils-test.cpp
+./build/unridden-worker-utils-test
 ```
 
 CI builds and runs it exactly that way. Running it through CMake and `ctest`
@@ -168,7 +168,7 @@ tests were needed.
    `fix: reject an empty choice label set`, within 50 characters. When a
    commit addresses an issue, add its trailer with
    `git commit -s --trailer "Github-Issue:#123"`.
-2. Push your branch to your fork and open a PR against `potto007/riderless`'s
+2. Push your branch to your fork and open a PR against `potto007/unridden`'s
    `main` branch. Draft PRs are useful for work that needs early feedback.
 3. Explain the change, link the issue, and list the checks you ran. Use
    `Closes #123` only when the PR fully addresses that issue.

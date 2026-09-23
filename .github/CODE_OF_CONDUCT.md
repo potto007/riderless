@@ -1,4 +1,4 @@
-# riderless Code of Conduct
+# unridden Code of Conduct
 
 ## Our Pledge
 
@@ -72,9 +72,9 @@ For software vulnerabilities, use the private reporting route in the
 
 ## Scope
 
-This policy applies in riderless's issues, pull requests, comments, and
+This policy applies in unridden's issues, pull requests, comments, and
 other project-controlled community spaces. It also applies when someone
-explicitly represents riderless in public, such as through an official
+explicitly represents unridden in public, such as through an official
 project account or as an appointed representative. It does not govern
 unrelated personal activity.
 
@@ -83,7 +83,7 @@ unrelated personal activity.
 This Code of Conduct is adapted from the
 [Contributor Covenant, version 3.0](https://www.contributor-covenant.org/version/3/0/),
 stewarded by the Organization for Ethical Source. The reporting, enforcement,
-and scope sections have been adapted for riderless's solo maintainer.
+and scope sections have been adapted for unridden's solo maintainer.
 
 Contributor Covenant and this adaptation are licensed under
 [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/).

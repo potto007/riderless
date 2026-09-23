@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Search existing issues and the
-        [architecture decisions](https://github.com/potto007/riderless/tree/main/docs/decisions)
+        [architecture decisions](https://github.com/potto007/unridden/tree/main/docs/decisions)
         before opening a request. Link related work below.
 
         This is a non-generative decision API: it reads final-position logits
@@ -14,8 +14,8 @@ body:
         that add sampling or generated output are out of scope, as are
         proposals that vendor third-party code or model weights, or that ask
         for measurements of a third-party hosted API. See the
-        [contribution guide](https://github.com/potto007/riderless/blob/main/.github/CONTRIBUTING.md).
-        Participation follows the [Code of Conduct](https://github.com/potto007/riderless/blob/main/.github/CODE_OF_CONDUCT.md).
+        [contribution guide](https://github.com/potto007/unridden/blob/main/.github/CONTRIBUTING.md).
+        Participation follows the [Code of Conduct](https://github.com/potto007/unridden/blob/main/.github/CODE_OF_CONDUCT.md).
   - type: textarea
     id: problem
     attributes:

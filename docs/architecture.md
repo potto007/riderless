@@ -9,7 +9,7 @@ auditable. Decisions behind it: [0001](decisions/0001-full-depth-label-readout-i
 ## Process model
 
 ```
-HTTP client  ->  FastAPI app (riderless/api/app.py)
+HTTP client  ->  FastAPI app (unridden/api/app.py)
                    ApiService: single-flight guard, timeouts
                      compiler.py   -> one prompt per question
                      native_backend.py -> JSONL over stdio
@@ -38,7 +38,7 @@ HTTP client  ->  FastAPI app (riderless/api/app.py)
   529 until the app is restarted. This is deliberate: a silent restart would
   reload about 17 GiB onto a GPU with nobody checking headroom.
 - **Worker stderr never reaches a client.** It is drained into a bounded tail of
-  the last 200 lines and logged at DEBUG under the `riderless.api.native`
+  the last 200 lines and logged at DEBUG under the `unridden.api.native`
   logger. HTTP error bodies carry a code, a message, an optional field name, and
   a retryable flag, and nothing else.
 - **A hostile environment is refused at startup.** Both the Python side and the
@@ -146,7 +146,7 @@ constant that the worker enforces.
 **Handshake.** The worker's first line is a `hello`:
 
 ```json
-{"type": "hello", "protocol_version": 3, "model_id": "local-gemma-riderless-v1",
+{"type": "hello", "protocol_version": 3, "model_id": "local-gemma-unridden-v1",
  "model_name": "...", "model_sha256": "...", "runtime_sha256": "...",
  "labels": ["A", "B", "..."], "label_token_ids": [1, 2],
  "context_size": 2048, "batch_size": 256, "ubatch_size": 256, "threads": 8,
@@ -166,7 +166,7 @@ sequential worker reports `false` and `0`.
 {"type": "evaluate", "id": "<correlation id>",
  "questions": [{"id": "route", "messages": [{"role": "user", "content": "..."}],
                 "answer_prefix": "Answer:\n", "labels": ["A", "B"],
-                "prompt_version": "riderless-gemma-choice-v1",
+                "prompt_version": "unridden-gemma-choice-v1",
                 "shared_prefix_bytes": 512}]}
 ```
 
@@ -214,7 +214,7 @@ reaps the child.
 
 ## Provenance manifests
 
-The worker is built by `python -m riderless.api.native.build`, which is
+The worker is built by `python -m unridden.api.native.build`, which is
 create-only: it refuses an output directory that already exists, so a build can
 never be silently overwritten. Before compiling it validates the base runtime:
 the base manifest must name a llama.cpp revision, the headers and shared
@@ -270,7 +270,7 @@ verified exactly as strictly as the tested one. What the revision buys is the
 ability to say which llama.cpp produced a published number.
 
 The project is tested against one release, recorded in
-`riderless/api/native/build.py` as both a tag and the commit that tag resolved
+`unridden/api/native/build.py` as both a tag and the commit that tag resolved
 to. `build_base_runtime.py` fetches that tag by default; `--revision` builds any
 other tag or commit. Asking for the tested tag is checked against the recorded
 commit, so a tag that upstream moves fails the build instead of silently

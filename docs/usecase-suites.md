@@ -1,6 +1,6 @@
 # The use-case suites
 
-Seven suites in [`riderless/examples/usecases/`](../riderless/examples/usecases/)
+Seven suites in [`unridden/examples/usecases/`](../unridden/examples/usecases/)
 hold 241 cases and 1,286 questions of original, hand-authored material with gold
 labels. They exist to measure task quality beyond the 36-question conformance
 smoke set, across the families of workload this kind of API is used for.
@@ -66,10 +66,10 @@ omits is treated as worse than every listed one when pairs are counted.
 ## Running them
 
 ```bash
-PYTHONPATH=. python scripts/riderless/run_usecase_suites.py \
-  --suites riderless/examples/usecases \
+PYTHONPATH=. python scripts/unridden/run_usecase_suites.py \
+  --suites unridden/examples/usecases \
   --out runs/usecase-suites-001 \
-  --worker build/api-worker/build/riderless-worker \
+  --worker build/api-worker/build/unridden-worker \
   --manifest build/api-worker/build.json \
   --model-path models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
   --allow-gpu
@@ -86,7 +86,7 @@ PYTHONPATH=. python scripts/riderless/run_usecase_suites.py \
   `--batched-context` sizes its KV cache. It too changes the batch shape, so it
   is a third configuration to hold fixed, not a free speedup. The run records
   all four settings in `run.json`.
-- `scripts/riderless/compare_observations.py --left <a>/observations.jsonl
+- `scripts/unridden/compare_observations.py --left <a>/observations.jsonl
   --right <b>/observations.jsonl` reduces two runs to answer changes, the
   largest probability and raw logit moves, tokens, and latency.
 - One backend serves all 241 requests, with one model load.

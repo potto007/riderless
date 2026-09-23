@@ -5,7 +5,7 @@
 
 ## Context
 
-Getting a first answer out of riderless took two compiles. The quick start
+Getting a first answer out of unridden took two compiles. The quick start
 asked for CMake, a C++ toolchain and, for a GPU, the CUDA toolkit, then spent
 about ten minutes building llama.cpp for one architecture and a minute more on
 the worker. That is a reasonable price for someone who intends to change the
@@ -17,7 +17,7 @@ Publishing a binary was not possible as the build stood, because the worker
 install was not portable in two independent ways.
 
 The manifest recorded absolute paths. `build.json` carried
-`"executable": "/home/someone/riderless/build/api-worker/build/riderless-worker"`
+`"executable": "/home/someone/unridden/build/api-worker/build/unridden-worker"`
 and a `runtime_dir` pointing at the llama.cpp base runtime somewhere else
 entirely, and startup compared the configured worker against that absolute
 string. Moving the directory, let alone unpacking it on another machine, failed
@@ -25,7 +25,7 @@ the check. The manifest also named the base build directory outright, which is
 a path from the builder's machine sitting in an artifact.
 
 The worker also had its backend directory compiled in.
-`ggml_backend_load_all_from_path(RIDERLESS_BACKEND_DIR)` used a string CMake
+`ggml_backend_load_all_from_path(UNRIDDEN_BACKEND_DIR)` used a string CMake
 baked from `LLAMA_BUILD`, so the binary could only ever dlopen the ggml
 backends out of the tree it was compiled against. The same absolute path was
 in its run path, which additionally made the executable's sha256 depend on
@@ -38,11 +38,11 @@ nothing outside itself.
 
 ```
 <dir>/build.json                the manifest
-<dir>/build/riderless-worker    the executable
+<dir>/build/unridden-worker    the executable
 <dir>/runtime/*.so*             the libraries it links and dlopens
 ```
 
-`ApiConfig`'s defaults already point at `build/api-worker/build/riderless-worker`
+`ApiConfig`'s defaults already point at `build/api-worker/build/unridden-worker`
 and `build/api-worker/build.json`, so a bundle unpacked into `build/api-worker`
 needs no flags. The local build produces that exact shape - it now copies the
 base runtime's libraries into the bundle instead of pointing at them - so a
@@ -78,7 +78,7 @@ compiled install and a downloaded one are the same thing.
 - **Published, verified, fetched.** A tagged release builds `cuda13`, `cuda12`
   and `cpu` bundles in NVIDIA's devel containers with `GGML_NATIVE=OFF` and a
   broad architecture set, attaches them with a `SHA256SUMS` file, and attests
-  them with `actions/attest-build-provenance`. `riderless-api worker fetch`
+  them with `actions/attest-build-provenance`. `unridden-api worker fetch`
   picks a flavor from the installed driver, checks the download against
   `SHA256SUMS`, runs `gh attestation verify` when `gh` is there, and unpacks.
 
@@ -139,7 +139,7 @@ provenance; what it removes is the compiler, not a check.
 - **A pre-0.2.0 worker directory keeps working but cannot be packed.** Schema 1
   is read; rebuilding is what produces a relocatable one.
 - **The worker gained a required argument.** Anything that launched
-  `riderless-worker` by hand must now pass `--runtime-dir`. The so1 probe and
+  `unridden-worker` by hand must now pass `--runtime-dir`. The so1 probe and
   its benchmark driver did, and were changed.
 
 ## What would reverse this

@@ -21,7 +21,7 @@ state API serializes whole sequences and has no notion of a block range.
   its own cell bookkeeping, so each sequence state is complete for the layers
   it owns and `llama_state_seq_get/set_data` serializes exactly those layers.
 - **A recorded runtime patch, not a fork.**
-  `riderless/api/native/patches/gemma4-layer-range.patch` adds
+  `unridden/api/native/patches/gemma4-layer-range.patch` adds
   `layer_begin`/`layer_end` to `llama_context_params`, filters the Gemma 4 KV
   cache to that range, runs only those blocks, takes residual input through
   `llama_batch.embd` when `layer_begin > 0`, and exposes the raw residual after
@@ -47,9 +47,9 @@ state API serializes whole sequences and has no notion of a block range.
 
 - The split profile is numerically distinct from the stock graph (different
   graph partitioning and fusion). Its qualification against the stock graph
-  (`scripts/riderless/qualify_snapshots.py`) is a gate. A failure keeps the
+  (`scripts/unridden/qualify_snapshots.py`) is a gate. A failure keeps the
   profile experimental.
 - Only text-only Gemma 4 with no shared-KV layers, per-layer inputs or nextn
   layers is accepted. The worker and the patch both check this.
 - The worker links a different runtime from the v1 worker and ships as its own
-  bundle (`riderless/api/native/snapshots/build.py`).
+  bundle (`unridden/api/native/snapshots/build.py`).

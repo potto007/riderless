@@ -5,7 +5,7 @@ Run on 2026-09-21, one RTX 5090, Gemma 4 26B-A4B UD-Q4_K_XL. Decision record:
 
 **Every number on this page was measured on llama.cpp release `v0.4.1`, commit
 `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`**, with a worker built from this
-branch's `riderless/api/native/worker.cpp` against that base runtime. All four
+branch's `unridden/api/native/worker.cpp` against that base runtime. All four
 runs below use the same worker binary; the only thing that differs is the
 `--batched` flag.
 
@@ -239,7 +239,7 @@ cells against the 8,192 available.
 Comparing the two: the fallback path is **not** bit-identical to the sequential
 worker. Largest raw label logit move 0.0238, largest probability move 3.3e-08,
 and all 6 answers identical ("green"). Those three numbers come from
-`scripts/riderless/compare_fallback.py` reading the two `summary.json` records,
+`scripts/unridden/compare_fallback.py` reading the two `summary.json` records,
 so a rerun that moves them can be diffed rather than recomputed by hand. That is
 the expected size of a same-algorithm, different-context-shape difference, and it
 confirms that the fallback is a third numeric regime rather than a copy of the
