@@ -60,7 +60,8 @@ as the v1 worker) and tokenizes; the Python side never handles tokens.
 
 - A **context** freeze point: `freeze = {"kind":"context","content_bytes":B}`.
   The worker renders `messages`, finds the first `B` bytes of the LAST user
-  message's content inside the rendered prompt, tokenizes the prompt up to the
+  message's content, trailing whitespace stripped (chat templates may trim a
+  turn), inside the rendered prompt, tokenizes the prompt up to the
   end of that text, and drops the final token (it may merge with what
   follows). Those tokens are the frozen prefix `P`. Fewer than 1 token is
   `invalid_request/internal`.

@@ -383,18 +383,24 @@ def run(args: argparse.Namespace) -> Row:
 
             # 3. restore identity: resident, then host restore
             resident = evaluate(client, s30, questions)
-            client.call(
-                {
-                    "type": "create",
-                    "messages": messages,
-                    "answer_prefix": "",
-                    "freeze": {"kind": "context", "content_bytes": content_bytes},
-                    "checkpoints": {"18": f"c{index}_other"},
-                    "labels": None,
-                    "top_logits": 0,
-                }
-            )
-            restored = evaluate(client, s30, questions)
+            # Each question is asked again right after another snapshot took
+            # the contexts, so every one of them restores from host bytes.
+            restored = []
+            for number, item in enumerate(questions):
+                evictor = f"c{index}_other{number}"
+                client.call(
+                    {
+                        "type": "create",
+                        "messages": messages,
+                        "answer_prefix": "",
+                        "freeze": {"kind": "context", "content_bytes": content_bytes},
+                        "checkpoints": {"18": evictor},
+                        "labels": None,
+                        "top_logits": 0,
+                    }
+                )
+                restored.extend(evaluate(client, s30, [item]))
+                client.call({"type": "drop", "snapshot_id": evictor})
             for first, again in zip(resident, restored, strict=True):
                 audit = first["snapshot"]
                 gates.check(
@@ -610,7 +616,7 @@ def run(args: argparse.Namespace) -> Row:
                     "expected": [row["label_logits"] for row in restored],
                 }
             )
-            for snapshot in (s18, s30, only18, f"c{index}_prom", f"c{index}_other"):
+            for snapshot in (s18, s30, only18, f"c{index}_prom"):
                 client.call({"type": "drop", "snapshot_id": snapshot})
 
         # 7. rejections that need no case

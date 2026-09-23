@@ -659,9 +659,14 @@ private:
             }
         }
         if (bytes == 0 || bytes > content.size()) throw invalid("internal", "content_bytes out of range");
-        const size_t start = full.prompt.find(content.substr(0, bytes));
+        // Templates may trim a turn's trailing whitespace, so the marker is
+        // matched without it; branches still render it, after the freeze point.
+        std::string marker = content.substr(0, bytes);
+        while (!marker.empty() && std::isspace(static_cast<unsigned char>(marker.back()))) marker.pop_back();
+        if (marker.empty()) throw invalid("internal", "content_bytes marks only whitespace");
+        const size_t start = full.prompt.find(marker);
         if (start == std::string::npos) throw invalid("internal", "Marked content not found in prompt");
-        frozen_text = full.prompt.substr(0, start + bytes);
+        frozen_text = full.prompt.substr(0, start + marker.size());
         const auto head = tokenize(runtime_.vocab(), frozen_text);
         const size_t limit = std::min(head.size(), full.tokens.size()) - 1;
         size_t common = 0;
@@ -1347,6 +1352,18 @@ private:
             {"h18_last", vector_json(h18.data() + h18.size() - width, 1, width, "raw_residual_after_block_18")},
             {"h30_last", vector_json(h30.data() + h30.size() - width, 1, width, "raw_residual_after_block_30")},
         };
+        if (request.contains("rows")) {
+            // Bounded full-row comparison for qualification diagnostics.
+            const size_t begin = request.at("rows").at(0).get<size_t>();
+            const size_t end = request.at("rows").at(1).get<size_t>();
+            if (begin >= end || end > full.tokens.size() || end - begin > MAX_VECTOR_ROWS) {
+                throw invalid("internal", "Row range out of bounds");
+            }
+            response["vectors"]["h18_rows"] = vector_json(
+                h18.data() + begin * width, end - begin, width, "raw_residual_after_block_18");
+            response["vectors"]["h30_rows"] = vector_json(
+                h30.data() + begin * width, end - begin, width, "raw_residual_after_block_30");
+        }
         response["generated_tokens"] = 0;
         return response;
     }
