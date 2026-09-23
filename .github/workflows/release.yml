@@ -32,7 +32,7 @@ env:
 
 jobs:
   bundle:
-    name: bundle (${{ matrix.flavor }})
+    name: ${{ matrix.kind }} (${{ matrix.flavor }})
     runs-on: ubuntu-24.04
     # llama.cpp's own ubuntu-cuda release job builds CUDA on a plain
     # ubuntu-24.04 runner inside the devel container, with no GPU present.
@@ -49,17 +49,33 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
+      # `snapshot-worker` is the experimental /v2 snapshot worker (ADR 0006). It
+      # links llama.cpp with gemma4-layer-range.patch applied, so it builds its
+      # own patched base in its own job: the v1 bundles never wait on it and a
+      # patch that stops applying cannot block them. CUDA only; the snapshot
+      # profile was only ever qualified on a GPU.
       matrix:
         include:
-          - flavor: cuda13
+          - kind: worker
+            flavor: cuda13
             container: nvidia/cuda:13.4.1-devel-ubuntu24.04
             cuda: true
-          - flavor: cuda12
+          - kind: worker
+            flavor: cuda12
             container: nvidia/cuda:12.8.2-devel-ubuntu24.04
             cuda: true
-          - flavor: cpu
+          - kind: worker
+            flavor: cpu
             container: ubuntu:24.04
             cuda: false
+          - kind: snapshot-worker
+            flavor: cuda13
+            container: nvidia/cuda:13.4.1-devel-ubuntu24.04
+            cuda: true
+          - kind: snapshot-worker
+            flavor: cuda12
+            container: nvidia/cuda:12.8.2-devel-ubuntu24.04
+            cuda: true
     steps:
       # The containers ship no git, and actions/checkout needs one to create a
       # real repository.
@@ -97,14 +113,14 @@ jobs:
       - name: Build the llama.cpp base runtime
         shell: bash
         run: |
+          args=(--out build/llama-base --no-native)
           if [ "${{ matrix.cuda }}" = "true" ]; then
-            uv run --no-sync python scripts/unridden/build_base_runtime.py \
-              --out build/llama-base --no-native \
-              --cuda --cuda-architectures "${CUDA_ARCHITECTURES}"
-          else
-            uv run --no-sync python scripts/unridden/build_base_runtime.py \
-              --out build/llama-base --no-native
+            args+=(--cuda --cuda-architectures "${CUDA_ARCHITECTURES}")
           fi
+          if [ "${{ matrix.kind }}" = "snapshot-worker" ]; then
+            args+=(--patch unridden/api/native/patches/gemma4-layer-range.patch)
+          fi
+          uv run --no-sync python scripts/unridden/build_base_runtime.py "${args[@]}"
 
       # The devel container has no NVIDIA driver. libggml-cuda's NEEDED entry
       # is libcuda.so.1, and the linker resolves a shared library's undefined
@@ -121,27 +137,35 @@ jobs:
             [ -e "$stubs/libcuda.so.1" ] || ln -s libcuda.so "$stubs/libcuda.so.1"
             export LDFLAGS="-Wl,-rpath-link,$stubs"
           fi
-          uv run --no-sync python -m unridden.api.native.build \
+          module=unridden.api.native.build
+          if [ "${{ matrix.kind }}" = "snapshot-worker" ]; then
+            module=unridden.api.native.snapshots.build
+          fi
+          uv run --no-sync python -m "$module" \
             --base build/llama-base --output build/api-worker
 
       - name: Pack the bundle
         id: pack
         shell: bash
         run: |
-          name="unridden-worker-${{ steps.version.outputs.version }}-linux-x64-${{ matrix.flavor }}.tar.gz"
+          name="unridden-${{ matrix.kind }}-${{ steps.version.outputs.version }}-linux-x64-${{ matrix.flavor }}.tar.gz"
           uv run --no-sync python -m unridden.api.native.bundle pack \
             --directory build/api-worker --output "dist/${name}"
           echo "name=${name}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: bundle-${{ matrix.flavor }}
+          name: bundle-${{ matrix.kind }}-${{ matrix.flavor }}
           path: dist/${{ steps.pack.outputs.name }}
           if-no-files-found: error
 
   publish:
     name: publish
     needs: bundle
+    # One matrix builds both kinds, and a failed snapshot-worker leg must not
+    # hold back the v1 bundles, so this runs unless the run was cancelled and
+    # the step below insists on every v1 bundle instead.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -156,6 +180,26 @@ jobs:
           pattern: bundle-*
           merge-multiple: true
           path: dist
+
+      # The v1 worker bundles are the release; a missing one fails the publish.
+      # A missing snapshot-worker bundle is only reported, since that profile
+      # is experimental (docs/results/state-snapshots-qualification.md).
+      - name: Require the v1 worker bundles
+        shell: bash
+        run: |
+          missing=0
+          for flavor in cuda13 cuda12 cpu; do
+            if ! ls dist/unridden-worker-*-linux-x64-${flavor}.tar.gz >/dev/null 2>&1; then
+              echo "::error::missing the v1 ${flavor} worker bundle"
+              missing=1
+            fi
+          done
+          for flavor in cuda13 cuda12; do
+            if ! ls dist/unridden-snapshot-worker-*-linux-x64-${flavor}.tar.gz >/dev/null 2>&1; then
+              echo "::warning::no snapshot-worker ${flavor} bundle; publishing without it"
+            fi
+          done
+          exit "$missing"
 
       - name: Resolve tag
         id: version
@@ -209,6 +253,7 @@ jobs:
   docker:
     name: docker (cuda13)
     needs: bundle
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -219,7 +264,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: bundle-cuda13
+          name: bundle-worker-cuda13
           path: dist
 
       - name: Resolve version

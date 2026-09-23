@@ -14,6 +14,7 @@ from unridden.api.native.bundle import (
     MANIFEST_NAME,
     MANIFEST_SCHEMA_VERSION,
     RUNTIME_RELATIVE,
+    SNAPSHOT_WORKER_RELATIVE,
     WORKER_RELATIVE,
     asset_name,
     pack,
@@ -22,8 +23,8 @@ from unridden.api.native.bundle import (
 )
 
 
-def _bundle(directory: Path, **overrides: Any) -> Path:
-    worker = directory / WORKER_RELATIVE
+def _bundle(directory: Path, binary: Path = WORKER_RELATIVE, **overrides: Any) -> Path:
+    worker = directory / binary
     worker.parent.mkdir(parents=True)
     worker.write_bytes(b"#!/bin/false\n")
     worker.chmod(0o755)
@@ -36,7 +37,7 @@ def _bundle(directory: Path, **overrides: Any) -> Path:
     manifest: dict[str, Any] = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "llama_revision": "0" * 40,
-        "executable": str(WORKER_RELATIVE),
+        "executable": str(binary),
         "runtime_dir": str(RUNTIME_RELATIVE),
     }
     manifest.update(overrides)
@@ -176,3 +177,47 @@ def test_asset_names_carry_the_version_platform_and_flavor() -> None:
     )
     with pytest.raises(ValueError, match="flavor"):
         asset_name("0.2.0", "cuda11")
+
+
+def test_asset_names_carry_the_bundle_kind() -> None:
+    assert (
+        asset_name("0.4.0", "cuda13", "snapshot-worker")
+        == "unridden-snapshot-worker-0.4.0-linux-x64-cuda13.tar.gz"
+    )
+    with pytest.raises(ValueError, match="kind"):
+        asset_name("0.4.0", "cuda13", "server")
+
+
+def test_a_snapshot_bundle_packs_and_unpacks_with_its_own_executable(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "api-snapshot-worker"
+    directory.mkdir()
+    _bundle(directory, SNAPSHOT_WORKER_RELATIVE)
+
+    archive = pack(directory, tmp_path / "snapshot.tar.gz")
+    restored = unpack(archive, tmp_path / "elsewhere")
+
+    assert (restored / SNAPSHOT_WORKER_RELATIVE).is_file()
+    assert (restored / SNAPSHOT_WORKER_RELATIVE).stat().st_mode & 0o111
+    assert not (restored / WORKER_RELATIVE).exists()
+
+
+def test_unpacking_checks_the_executable_the_manifest_names(
+    tmp_path: Path,
+) -> None:
+    # A snapshot manifest shipped next to the v1 binary is not an install.
+    directory = tmp_path / "api-snapshot-worker"
+    directory.mkdir()
+    _bundle(directory, SNAPSHOT_WORKER_RELATIVE)
+    archive = pack(directory, tmp_path / "snapshot.tar.gz")
+    (directory / SNAPSHOT_WORKER_RELATIVE).unlink()
+    broken = tmp_path / "broken.tar.gz"
+    with tarfile.open(archive) as source, tarfile.open(broken, "w:gz") as tar:
+        for member in source.getmembers():
+            if member.name == str(SNAPSHOT_WORKER_RELATIVE):
+                continue
+            tar.addfile(member, source.extractfile(member) if member.isfile() else None)
+
+    with pytest.raises(ValueError, match="unridden-snapshot-worker"):
+        unpack(broken, tmp_path / "restored")

@@ -9,6 +9,17 @@ worker protocol can change between minor versions without a deprecation
 period. Each release records which llama.cpp revision and which model file its
 published measurements were taken on.
 
+## Unreleased
+
+### Added
+
+- Releases publish an experimental `unridden-snapshot-worker` bundle (cuda13,
+  cuda12) for the `/v2` snapshot routes, built against llama.cpp with
+  `gemma4-layer-range.patch` applied (ADR 0006). Install it with
+  `worker fetch --kind snapshot-worker`; it lands in `build/api-snapshot-worker`.
+  The split profile still fails qualification gate 5, so it stays
+  experimental, and a failed snapshot build does not hold back the v1 bundles.
+
 ## 0.3.0 - 2026-09-22
 
 ### Changed

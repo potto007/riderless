@@ -21,12 +21,14 @@ from unridden.api.native.bundle import (
     MANIFEST_NAME,
     MANIFEST_SCHEMA_VERSION,
     RUNTIME_RELATIVE,
+    SNAPSHOT_WORKER_RELATIVE,
     WORKER_RELATIVE,
     asset_name,
     pack,
 )
 from unridden.api.native.fetch import (
     CHECKSUM_FILE,
+    DEFAULT_OUTPUTS,
     FetchError,
     detect_flavor,
     fetch,
@@ -273,3 +275,56 @@ def test_checksum_lines_are_read_the_way_sha256sum_writes_them() -> None:
     assert parsed == {"first.tar.gz": "a" * 64, "second.tar.gz": "b" * 64}
     with pytest.raises(FetchError, match="no checksums"):
         parse_checksums("nothing here\n")
+
+
+def test_a_snapshot_bundle_is_fetched_by_kind(
+    tmp_path: Path, offline_release: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _no_gh(monkeypatch)
+    source = tmp_path / "snapshot-built"
+    worker = source / SNAPSHOT_WORKER_RELATIVE
+    worker.parent.mkdir(parents=True)
+    worker.write_bytes(b"#!/bin/false\n")
+    (source / RUNTIME_RELATIVE).mkdir()
+    (source / MANIFEST_NAME).write_text(
+        json.dumps(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "llama_revision": REVISION,
+                "executable": str(SNAPSHOT_WORKER_RELATIVE),
+                "runtime_dir": str(RUNTIME_RELATIVE),
+            }
+        )
+    )
+    name = asset_name(VERSION, "cuda13", "snapshot-worker")
+    pack(source, offline_release / name)
+    digest = hashlib.sha256((offline_release / name).read_bytes()).hexdigest()
+    with (offline_release / CHECKSUM_FILE).open("a") as sums:
+        sums.write(f"{digest}  {name}\n")
+    output = tmp_path / "build" / "api-snapshot-worker"
+
+    result = fetch(
+        output=output,
+        kind="snapshot-worker",
+        flavor="cuda13",
+        requested_version=VERSION,
+        repository="potto007/unridden",
+        require_attestation=False,
+    )
+
+    assert (output / SNAPSHOT_WORKER_RELATIVE).is_file()
+    assert result["kind"] == "snapshot-worker"
+    assert result["asset"] == name
+
+
+def test_the_default_outputs_are_where_apiconfig_looks() -> None:
+    from unridden.api.app import ApiConfig
+
+    defaults = ApiConfig()
+    assert defaults.manifest_path == DEFAULT_OUTPUTS["worker"] / MANIFEST_NAME
+    assert defaults.snapshot_manifest_path == (
+        DEFAULT_OUTPUTS["snapshot-worker"] / MANIFEST_NAME
+    )
+    assert defaults.snapshot_worker_path == (
+        DEFAULT_OUTPUTS["snapshot-worker"] / SNAPSHOT_WORKER_RELATIVE
+    )
