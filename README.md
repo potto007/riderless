@@ -1,5 +1,7 @@
 # Unridden
 
+![Unridden: a free elephant stepping forward, drawn from flowing cyan decision signals. Intelligence in Motion.](docs/images/unridden-intelligence-in-motion.png)
+
 A local decision API that answers structured questions by reading logits, with
 zero generated tokens. You supply a `state` and a named map of questions; the
 service returns one typed answer per question: a Choice, a Score, or a Noul
