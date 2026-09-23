@@ -31,6 +31,7 @@ from pathlib import Path
 from unridden.api.native.build import TESTED_LLAMA_REVISION, TESTED_LLAMA_TAG
 from unridden.api.native.bundle import (
     FLAVORS,
+    KINDS,
     MANIFEST_NAME,
     asset_name,
     read_manifest,
@@ -41,7 +42,11 @@ LOGGER = logging.getLogger("unridden.api.native.fetch")
 
 RELEASE_REPOSITORY = "potto007/unridden"
 CHECKSUM_FILE = "SHA256SUMS"
-DEFAULT_OUTPUT = Path("build/api-worker")
+# Where each kind lands by default: the paths `ApiConfig` already looks in.
+DEFAULT_OUTPUTS = {
+    "worker": Path("build/api-worker"),
+    "snapshot-worker": Path("build/api-snapshot-worker"),
+}
 DOWNLOAD_TIMEOUT = 120.0
 
 # The driver each CUDA flavor needs, from NVIDIA's own minimum-driver table.
@@ -171,6 +176,7 @@ def verify_attestation(archive: Path, repository: str, *, required: bool) -> boo
 def fetch(
     *,
     output: Path,
+    kind: str = "worker",
     flavor: str | None,
     requested_version: str | None,
     repository: str,
@@ -183,8 +189,10 @@ def fetch(
         print(f"flavor: {flavor} ({reason})")
     elif flavor not in FLAVORS:
         raise FetchError(f"unknown flavor {flavor}")
+    if kind not in KINDS:
+        raise FetchError(f"unknown bundle kind {kind}")
     tag = release_tag(requested_version)
-    name = asset_name(tag.removeprefix("v"), flavor)
+    name = asset_name(tag.removeprefix("v"), flavor, kind)
     base = f"https://github.com/{repository}/releases/download/{tag}"
 
     with tempfile.TemporaryDirectory(prefix="unridden-fetch-") as scratch:
@@ -218,6 +226,7 @@ def fetch(
     return {
         "output": str(output),
         "tag": tag,
+        "kind": kind,
         "flavor": flavor,
         "asset": name,
         "sha256": actual,
@@ -238,9 +247,17 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=DEFAULT_OUTPUT,
-        help=f"directory to unpack into; must not exist. Default {DEFAULT_OUTPUT}, "
-        "which is where the API already looks",
+        default=None,
+        help="directory to unpack into; must not exist. Default "
+        f"{DEFAULT_OUTPUTS['worker']} (snapshot-worker: "
+        f"{DEFAULT_OUTPUTS['snapshot-worker']}), which is where the API already looks",
+    )
+    parser.add_argument(
+        "--kind",
+        choices=tuple(KINDS),
+        default="worker",
+        help="which bundle to install. snapshot-worker serves the experimental /v2 "
+        "snapshot routes and links a patched llama.cpp (ADR 0006). Default worker",
     )
     parser.add_argument(
         "--flavor",
@@ -271,7 +288,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 def run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     try:
         result = fetch(
-            output=args.output,
+            output=args.output or DEFAULT_OUTPUTS[args.kind],
+            kind=args.kind,
             flavor=args.flavor,
             requested_version=args.version,
             repository=args.repository,

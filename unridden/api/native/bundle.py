@@ -3,7 +3,8 @@
 A worker install is one directory, and everything the API needs is inside it:
 
     <dir>/build.json                the build manifest
-    <dir>/build/unridden-worker    the executable
+    <dir>/build/unridden-worker    the executable (a snapshot bundle carries
+                                    build/unridden-snapshot-worker instead)
     <dir>/runtime/*.so*             the shared libraries it links and dlopens
 
 That directory is the unit that moves. A local build writes it, `pack` turns it
@@ -31,7 +32,12 @@ SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 
 MANIFEST_NAME = "build.json"
 WORKER_RELATIVE = Path("build/unridden-worker")
+SNAPSHOT_WORKER_RELATIVE = Path("build/unridden-snapshot-worker")
 RUNTIME_RELATIVE = Path("runtime")
+# The bundle kinds a release publishes, by the executable each one carries. The
+# snapshot worker links the layer-range patched runtime (ADR 0006), so it is a
+# separate bundle and never shares a runtime directory with the v1 worker.
+KINDS = {"worker": WORKER_RELATIVE, "snapshot-worker": SNAPSHOT_WORKER_RELATIVE}
 # Exactly what a bundle contains; `pack` refuses to ship anything else, so
 # CMake scratch or a stray log can never ride along into a release asset.
 BUNDLE_MEMBERS = (Path(MANIFEST_NAME), WORKER_RELATIVE.parent, RUNTIME_RELATIVE)
@@ -40,11 +46,22 @@ FLAVORS = ("cuda13", "cuda12", "cpu")
 PLATFORM = "linux-x64"
 
 
-def asset_name(version: str, flavor: str) -> str:
-    """The release asset for one version and flavor."""
+def asset_name(version: str, flavor: str, kind: str = "worker") -> str:
+    """The release asset for one version, flavor and bundle kind."""
     if flavor not in FLAVORS:
         raise ValueError(f"unknown flavor {flavor}")
-    return f"unridden-worker-{version}-{PLATFORM}-{flavor}.tar.gz"
+    if kind not in KINDS:
+        raise ValueError(f"unknown bundle kind {kind}")
+    return f"unridden-{kind}-{version}-{PLATFORM}-{flavor}.tar.gz"
+
+
+def bundle_executable(directory: Path, executable: Path) -> Path:
+    """The kind-specific executable path, or an error naming what is allowed."""
+    for relative in KINDS.values():
+        if executable == directory / relative:
+            return relative
+    allowed = " or ".join(str(relative) for relative in KINDS.values())
+    raise ValueError(f"bundle executable is not {allowed}")
 
 
 def _resolve_member(root: Path, raw: Any, field: str, schema: int) -> Path:
@@ -110,8 +127,7 @@ def pack(directory: Path, archive: Path) -> Path:
     if manifest_schema_version(manifest) != MANIFEST_SCHEMA_VERSION:
         raise ValueError("only a relocatable manifest can be packed")
     executable, runtime_dir = resolve_manifest_paths(manifest, manifest_path)
-    if executable != directory / WORKER_RELATIVE:
-        raise ValueError(f"bundle executable is not {WORKER_RELATIVE}")
+    bundle_executable(directory, executable)
     if runtime_dir != directory / RUNTIME_RELATIVE:
         raise ValueError(f"bundle runtime_dir is not {RUNTIME_RELATIVE}")
     if archive.exists():
@@ -139,9 +155,11 @@ def unpack(archive: Path, directory: Path) -> Path:
     manifest_path = directory / MANIFEST_NAME
     if not manifest_path.is_file():
         raise ValueError(f"archive has no {MANIFEST_NAME} at its root")
-    if not (directory / WORKER_RELATIVE).is_file():
-        raise ValueError(f"archive has no {WORKER_RELATIVE}")
-    (directory / WORKER_RELATIVE).chmod(0o755)
+    executable, _ = resolve_manifest_paths(read_manifest(manifest_path), manifest_path)
+    relative = bundle_executable(directory.resolve(), executable)
+    if not (directory / relative).is_file():
+        raise ValueError(f"archive has no {relative}")
+    (directory / relative).chmod(0o755)
     return directory
 
 
