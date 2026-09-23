@@ -1,0 +1,183 @@
+diff -ruN a/include/llama.h b/include/llama.h
+--- a/include/llama.h	2026-09-22 17:56:28.865404846 -0600
++++ b/include/llama.h	2026-09-22 18:19:14.306907306 -0600
+@@ -416,6 +416,15 @@
+         // a source/target/parent context
+         // can be utilized in various ways, for example by sharing results or llama_memory between 2 contexts
+         struct llama_context * ctx_other;
++
++        // [RIDERLESS PATCH: gemma4 layer range]
++        // Execute and allocate memory for blocks [layer_begin, layer_end) only.
++        // 0 and -1 (the defaults) mean the whole model. layer_begin > 0 takes the
++        // residual stream through llama_batch.embd; layer_end < n_layer skips the
++        // final norm and head. Read the boundary residual with
++        // llama_set_embeddings_layer_inp(ctx, layer_end, true).
++        int32_t layer_begin;
++        int32_t layer_end;
+     };
+ 
+     struct llama_model_tensor_override {
+@@ -915,6 +924,12 @@
+ // Getting the state for a seq_id with this flag invalidates all prior states gotten for that seq_id with this flag.
+ #define LLAMA_STATE_SEQ_FLAGS_ON_DEVICE 2
+ 
++// [RIDERLESS PATCH: gemma4 layer range]
++// Keep SWA-masked cells when saving a sequence. Without it a restored state
++// holds fewer cells than the live one, which changes the attention reduction
++// and therefore the numerics of every later token. Needs a swa_full context.
++#define LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED 4
++
+     typedef uint32_t llama_state_seq_flags;
+ 
+     LLAMA_API size_t llama_state_seq_get_size_ext(
+diff -ruN a/src/llama-context.cpp b/src/llama-context.cpp
+--- a/src/llama-context.cpp	2026-09-22 17:56:28.867085799 -0600
++++ b/src/llama-context.cpp	2026-09-22 17:57:03.390138976 -0600
+@@ -142,6 +142,26 @@
+ 
+     cparams.ctx_other = nullptr;
+ 
++    {
++        // [RIDERLESS PATCH: gemma4 layer range]
++        const int32_t n_layer_all = (int32_t) hparams.n_layer();
++        cparams.layer_begin = params.layer_begin;
++        cparams.layer_end   = params.layer_end < 0 ? n_layer_all : params.layer_end;
++        const bool partial = cparams.layer_begin != 0 || cparams.layer_end != n_layer_all;
++        if (cparams.layer_begin < 0 || cparams.layer_begin >= cparams.layer_end || cparams.layer_end > n_layer_all) {
++            throw std::runtime_error("invalid layer range");
++        }
++        if (partial && model.arch != LLM_ARCH_GEMMA4) {
++            throw std::runtime_error("a partial layer range is supported for gemma4 only");
++        }
++        if (partial && ((int32_t) hparams.n_layer_kv_from_start != (int32_t) hparams.n_layer_all || hparams.n_embd_per_layer > 0 || hparams.n_layer_nextn > 0)) {
++            throw std::runtime_error("a partial layer range needs a gemma4 model without shared KV, per-layer inputs or nextn layers");
++        }
++        if (partial && params.ctx_type != LLAMA_CONTEXT_TYPE_DEFAULT) {
++            throw std::runtime_error("a partial layer range needs the default context type");
++        }
++    }
++
+     // TODO: more generic
+     if (model.arch == LLM_ARCH_GEMMA4_ASSISTANT) {
+         if (params.ctx_other == nullptr) {
+@@ -3654,6 +3674,8 @@
+         /*.sampler                     =*/ nullptr,
+         /*.n_sampler                   =*/ 0,
+         /*.ctx_other                   =*/ nullptr,
++        /*.layer_begin                 =*/ 0,
++        /*.layer_end                   =*/ -1,
+     };
+ 
+     return result;
+diff -ruN a/src/llama-cparams.h b/src/llama-cparams.h
+--- a/src/llama-cparams.h	2026-09-22 17:56:28.867401849 -0600
++++ b/src/llama-cparams.h	2026-09-22 17:56:46.365878000 -0600
+@@ -64,4 +64,8 @@
+     void * cb_eval_user_data;
+ 
+     llama_context * ctx_other;
++
++    // [RIDERLESS PATCH: gemma4 layer range] resolved, always a valid range
++    int32_t layer_begin = 0;
++    int32_t layer_end   = 0;
+ };
+diff -ruN a/src/llama-graph.h b/src/llama-graph.h
+--- a/src/llama-graph.h	2026-09-22 17:56:28.867796382 -0600
++++ b/src/llama-graph.h	2026-09-22 17:56:46.366560032 -0600
+@@ -871,6 +871,13 @@
+             return false;
+         }
+ 
++        // [RIDERLESS PATCH: gemma4 layer range]
++        if (cparams.layer_begin != other.cparams.layer_begin ||
++            cparams.layer_end   != other.cparams.layer_end   ||
++            cparams.embeddings_layer_inp != other.cparams.embeddings_layer_inp) {
++            return false;
++        }
++
+         return
+             cparams.embeddings              == other.cparams.embeddings              &&
+             cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&
+diff -ruN a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+--- a/src/llama-kv-cache.cpp	2026-09-22 17:56:28.869902847 -0600
++++ b/src/llama-kv-cache.cpp	2026-09-22 18:19:14.308671715 -0600
+@@ -2056,8 +2056,6 @@
+         return;
+     }
+ 
+-    GGML_UNUSED(flags);
+-
+     io.write(&n_stream, sizeof(n_stream));
+ 
+     for (uint32_t s = 0; s < n_stream; ++s) {
+@@ -2078,7 +2076,8 @@
+             add_cell = add_cell && (seq_id == -1 || cells.seq_has(i, seq_id));
+ 
+             // check the cell is not SWA-masked
+-            if (add_cell && seq_id != -1) {
++            // [RIDERLESS PATCH: gemma4 layer range] unless asked to keep them
++            if (add_cell && seq_id != -1 && !(flags & LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED)) {
+                 const bool is_masked = llama_hparams::is_masked_swa(n_swa, swa_type, cells.pos_get(i), cells.seq_pos_max(seq_id));
+ 
+                 add_cell = !is_masked;
+diff -ruN a/src/llama-model.cpp b/src/llama-model.cpp
+--- a/src/llama-model.cpp	2026-09-22 17:56:28.872512343 -0600
++++ b/src/llama-model.cpp	2026-09-22 17:56:46.366834843 -0600
+@@ -2630,6 +2630,14 @@
+                     llama_memory_i::layer_reuse_cb reuse = nullptr;
+                     llama_kv_cache::layer_share_cb share = nullptr;
+ 
++                    if (arch == LLM_ARCH_GEMMA4 &&
++                        (cparams.layer_begin != 0 || cparams.layer_end != (int32_t) hparams.n_layer())) {
++                        // [RIDERLESS PATCH: gemma4 layer range] own only the executed blocks
++                        const int32_t layer_begin = cparams.layer_begin;
++                        const int32_t layer_end   = cparams.layer_end;
++                        filter = [layer_begin, layer_end](int32_t il) { return il >= layer_begin && il < layer_end; };
++                    }
++
+                     if (arch == LLM_ARCH_GEMMA3N || arch == LLM_ARCH_GEMMA4) {
+                         reuse = [&](uint32_t il) {
+                             GGML_ASSERT(hparams.n_layer_kv_from_start >= 2);
+diff -ruN a/src/models/gemma4.cpp b/src/models/gemma4.cpp
+--- a/src/models/gemma4.cpp	2026-09-22 17:56:28.885371189 -0600
++++ b/src/models/gemma4.cpp	2026-09-22 17:57:03.389769582 -0600
+@@ -170,7 +170,13 @@
+     // TODO: is causal == true correct? might need some changes
+     auto * inp_attn = build_attn_inp_kv_iswa();
+ 
+-    ggml_tensor * inp_out_ids = build_inp_out_ids();
++    // [RIDERLESS PATCH: gemma4 layer range] a lower range has no head, so it
++    // selects no output rows; its boundary residual is read for every token
++    const int layer_begin = cparams.layer_begin;
++    const int layer_end   = cparams.layer_end;
++    const bool has_head   = layer_end == n_layer;
++
++    ggml_tensor * inp_out_ids = has_head ? build_inp_out_ids() : nullptr;
+ 
+     ggml_tensor * inp_per_layer = nullptr;
+     if (model.per_layer_tok_embd) {
+@@ -181,7 +187,7 @@
+         inp_per_layer = project_per_layer_inputs(inpL, inp_per_layer);
+     }
+ 
+-    for (int il = 0; il < n_layer; ++il) {
++    for (int il = layer_begin; il < layer_end; ++il) {
+         const int64_t n_embd_head = hparams.n_embd_head_k(il);
+         GGML_ASSERT(n_embd_head == hparams.n_embd_head_v(il));
+ 
+@@ -400,6 +406,15 @@
+         // input for next layer
+         inpL = cur;
+     }
++
++    // [RIDERLESS PATCH: gemma4 layer range] raw residual after the last executed
++    // block, before any final norm; row-complete unless nextn masking pruned it
++    res->t_layer_inp[layer_end] = inpL;
++    if (!has_head) {
++        ggml_build_forward_expand(gf, inpL);
++        return;
++    }
++
+     cur = inpL;
+ 
+     cur = build_norm(cur,

@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from riderless.api.backend import (
     Backend,
@@ -31,10 +32,36 @@ from riderless.api.schema import (
     ErrorBody,
     ErrorResponse,
 )
+from riderless.api.snapshots.backend import SnapshotBackend
+from riderless.api.snapshots.errors import (
+    CapabilityUnavailable,
+    FollowupUnsupported,
+    PrefixMismatch,
+    SnapshotError,
+    SnapshotExists,
+    SnapshotInUse,
+    SnapshotNotFound,
+    SnapshotRequestError,
+    SnapshotStoreFull,
+    SnapshotUnavailableError,
+)
+from riderless.api.snapshots.schema import (
+    SnapshotCreateRequest,
+    StateEvaluationRequest,
+    V2DecisionRequest,
+)
+from riderless.api.snapshots.service import SnapshotBusyError, SnapshotService
 
 LOGGER = logging.getLogger("riderless.api.app")
 BackendFactory = Callable[["ApiConfig"], Backend]
+SnapshotBackendFactory = Callable[["ApiConfig"], SnapshotBackend]
 DECISION_PATH = "/v1/decisions"
+V2_SNAPSHOTS_PATH = "/v2/snapshots"
+V2_DECISIONS_PATH = "/v2/decisions"
+V2_STATE_EVAL_PATH = "/v2/state-evaluations"
+V2_BOUNDED_POST_PATHS = frozenset(
+    {V2_SNAPSHOTS_PATH, V2_DECISIONS_PATH, V2_STATE_EVAL_PATH}
+)
 # Compatibility alias. Same handler, same bodies; an interoperability path for
 # clients written against this project's earlier request shape.
 COMPATIBILITY_PATH = "/v1/systemone"
@@ -71,6 +98,22 @@ class ApiConfig:
     max_response_bytes: int = 4 * 1024 * 1024
     request_timeout: float = 120.0
     startup_timeout: float = 600.0
+    # The v1 backend loads its own copy of the model. Turn it off to run a
+    # snapshots-only server so both copies never fight for the one GPU.
+    v1_enabled: bool = True
+    # Experimental /v2 snapshot extension (design 2026-09-22). Off by default;
+    # when off the v2 routes are never registered and v1 is unchanged.
+    snapshots_enabled: bool = False
+    snapshot_worker_path: Path = Path(
+        "build/api-snapshot-worker/build/riderless-snapshot-worker"
+    )
+    snapshot_manifest_path: Path = Path("build/api-snapshot-worker/build.json")
+    snapshot_store_dir: Path = Path("build/snapshots")
+    # A host budget for evicting inactive snapshots to disk or dropping them.
+    snapshot_host_bytes: int = 2 * 1024 * 1024 * 1024
+    snapshot_default_ttl: int = 3600
+    # Only the qualification harness needs the stock full-depth reference context.
+    snapshot_reference: bool = False
 
     def __post_init__(self) -> None:
         positive = {
@@ -99,6 +142,13 @@ class ApiConfig:
                 )
         if self.request_timeout <= 0 or self.startup_timeout <= 0:
             raise ValueError("timeouts must be positive")
+        if not self.v1_enabled and not self.snapshots_enabled:
+            raise ValueError("at least one of v1 or snapshots must be enabled")
+        if self.snapshots_enabled:
+            if self.snapshot_host_bytes <= 0:
+                raise ValueError("snapshot_host_bytes must be positive")
+            if not 1 <= self.snapshot_default_ttl <= 86_400:
+                raise ValueError("snapshot_default_ttl must be within a day")
 
 
 class BusyError(RuntimeError):
@@ -192,25 +242,113 @@ def _default_backend(config: ApiConfig) -> Backend:
     )
 
 
+def _default_snapshot_backend(config: ApiConfig) -> SnapshotBackend:
+    from riderless.api.snapshots.backend import SnapshotNativeBackend
+
+    return SnapshotNativeBackend(
+        worker_path=config.snapshot_worker_path,
+        model_path=config.model_path,
+        manifest_path=config.snapshot_manifest_path,
+        gpu=config.gpu,
+        context_size=config.context_size,
+        batch_size=config.batch_size,
+        ubatch_size=config.ubatch_size,
+        threads=config.threads,
+        reference=config.snapshot_reference,
+        max_response_bytes=config.max_response_bytes,
+        default_timeout=config.request_timeout,
+        startup_timeout=config.startup_timeout,
+        expected_model_sha256=config.model_sha256,
+    )
+
+
+def _snapshot_error(error: SnapshotError) -> JSONResponse:
+    """Map a typed snapshot failure to the v1 error body shape."""
+    if isinstance(error, SnapshotNotFound):
+        return _error(404, "snapshot_not_found", "snapshot is unknown or expired")
+    if isinstance(error, CapabilityUnavailable):
+        return _error(
+            422, "capability_unavailable", str(error) or "capability unavailable"
+        )
+    if isinstance(error, PrefixMismatch):
+        return _error(
+            409, "snapshot_prefix_mismatch", "branch does not extend the frozen prefix"
+        )
+    if isinstance(error, FollowupUnsupported):
+        return _error(409, "followup_unsupported", "this snapshot cannot be continued")
+    if isinstance(error, SnapshotExists):
+        return _error(409, "snapshot_exists", "snapshot id already exists")
+    if isinstance(error, SnapshotInUse):
+        return _error(409, "snapshot_in_use", "snapshot is leased or still referenced")
+    if isinstance(error, SnapshotStoreFull):
+        return _error(
+            507,
+            "snapshot_store_full",
+            "snapshot host budget is exhausted",
+            retryable=True,
+        )
+    if isinstance(error, SnapshotRequestError):
+        if error.reason == "control_tokens":
+            return _error(
+                422,
+                "unsupported_content",
+                "state or question text contains model control tokens",
+            )
+        return _error(422, "budget_error", "request exceeds model limits")
+    if isinstance(error, SnapshotUnavailableError):
+        return _error(
+            529, "unavailable", "snapshot backend is unavailable", retryable=True
+        )
+    # Any remaining typed failure (integrity, execution, protocol, or a base
+    # SnapshotError) is an internal fault the caller cannot fix.
+    return _error(500, "internal_error", "request failed internally")
+
+
 def create_app(
     config: ApiConfig | None = None,
     *,
     backend_factory: BackendFactory | None = None,
+    snapshot_backend_factory: SnapshotBackendFactory | None = None,
 ) -> FastAPI:
     """Create an app without starting a model or touching the GPU."""
     resolved = config or ApiConfig()
     factory = backend_factory or _default_backend
+    snapshot_factory = snapshot_backend_factory or _default_snapshot_backend
+    bounded_post_paths = DECISION_PATHS | (
+        V2_BOUNDED_POST_PATHS if resolved.snapshots_enabled else frozenset()
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        backend = factory(resolved)
-        service = ApiService(backend, resolved)
+        # The v1 backend loads its own copy of the model, so it is only built
+        # when v1 is enabled; a snapshots-only server never allocates it.
+        service: ApiService | None = None
+        if resolved.v1_enabled:
+            service = ApiService(factory(resolved), resolved)
         app.state.service = service
+        app.state.snapshots = None
+        snapshots: SnapshotService | None = None
+        if resolved.snapshots_enabled:
+            snapshots = SnapshotService(
+                snapshot_factory(resolved),
+                store_root=str(resolved.snapshot_store_dir),
+                host_bytes=resolved.snapshot_host_bytes,
+                default_ttl=resolved.snapshot_default_ttl,
+                request_timeout=resolved.request_timeout,
+                startup_timeout=resolved.startup_timeout,
+            )
+            app.state.snapshots = snapshots
         try:
-            await service.start()
+            if service is not None:
+                await service.start()
+            if snapshots is not None:
+                await snapshots.start()
             yield
         finally:
-            await service.close()
+            if snapshots is not None:
+                await snapshots.close()
+            if service is not None:
+                await service.close()
 
     app = FastAPI(
         title="Riderless Decision API",
@@ -220,7 +358,7 @@ def create_app(
 
     @app.middleware("http")
     async def request_bounds(request: Request, call_next: Any) -> Any:
-        if request.url.path in DECISION_PATHS and request.method == "POST":
+        if request.url.path in bounded_post_paths and request.method == "POST":
             content_type = request.headers.get("content-type", "")
             media = content_type.split(";", 1)[0].strip().lower()
             if media != "application/json":
@@ -266,8 +404,15 @@ def create_app(
 
     @app.get("/health")
     async def health(request: Request) -> JSONResponse:
-        service: ApiService = request.app.state.service
-        if service.profile is None or not service.backend.ready:
+        # Healthy only when every enabled backend is ready. A snapshots-only
+        # server (v1 off) is ok once the snapshot service is ready.
+        service: ApiService | None = request.app.state.service
+        snapshots: SnapshotService | None = request.app.state.snapshots
+        v1_down = service is not None and (
+            service.profile is None or not service.backend.ready
+        )
+        snap_down = snapshots is not None and not snapshots.ready
+        if v1_down or snap_down:
             return _error(
                 529,
                 "unavailable",
@@ -278,8 +423,8 @@ def create_app(
 
     @app.get("/v1/models")
     async def models(request: Request) -> dict[str, object]:
-        service: ApiService = request.app.state.service
-        profile = service.profile
+        service: ApiService | None = request.app.state.service
+        profile = service.profile if service is not None else None
         if profile is None:
             return {"models": []}
         return {
@@ -328,7 +473,11 @@ def create_app(
     ) -> DecisionResponse | JSONResponse:
         if request.model != MODEL_ID:
             return _error(404, "unknown_model", "requested model is not available")
-        service: ApiService = raw_request.app.state.service
+        service: ApiService | None = raw_request.app.state.service
+        if service is None:
+            return _error(
+                529, "unavailable", "model backend is unavailable", retryable=True
+            )
         try:
             return await service.evaluate(request, diagnostics=diagnostics)
         except BusyError:
@@ -383,7 +532,98 @@ def create_app(
         summary=f"Compatibility alias for POST {DECISION_PATH}",
     )
 
+    if resolved.snapshots_enabled:
+        _register_v2_routes(app)
+
     return app
+
+
+def _snapshots(request: Request) -> SnapshotService:
+    service: SnapshotService | None = getattr(request.app.state, "snapshots", None)
+    if service is None:
+        raise SnapshotUnavailableError("snapshot backend is not configured")
+    return service
+
+
+async def _run_snapshot(request: Request, coro: Any) -> Any:
+    """Run one snapshot call and turn its failures into structured bodies."""
+    del request
+    try:
+        result = await coro
+        if isinstance(result, BaseModel):
+            return JSONResponse(result.model_dump(exclude_none=True))
+        return result
+    except SnapshotBusyError:
+        return _error(
+            429, "busy", "the snapshot model is serving another request", retryable=True
+        )
+    except TimeoutError:
+        return _error(408, "timeout", "request timed out", retryable=True)
+    except SnapshotError as error:
+        return _snapshot_error(error)
+    except ValueError:
+        return _error(422, "budget_error", "request exceeds model limits")
+    except Exception:
+        LOGGER.exception("unexpected failure while serving a snapshot request")
+        return _error(500, "internal_error", "request failed internally")
+
+
+def _register_v2_routes(app: FastAPI) -> None:
+    @app.post("/v2/snapshots")
+    async def create_snapshot(body: SnapshotCreateRequest, request: Request) -> Any:
+        if body.model != MODEL_ID:
+            return _error(404, "unknown_model", "requested model is not available")
+        service = _snapshots(request)
+        return await _run_snapshot(request, service.create(body, owner="local"))
+
+    @app.post("/v2/decisions")
+    async def v2_decide(body: V2DecisionRequest, request: Request) -> Any:
+        if body.model != MODEL_ID:
+            return _error(404, "unknown_model", "requested model is not available")
+        service = _snapshots(request)
+        return await _run_snapshot(request, service.decide(body, owner="local"))
+
+    @app.post("/v2/state-evaluations")
+    async def v2_state_eval(body: StateEvaluationRequest, request: Request) -> Any:
+        if body.model != MODEL_ID:
+            return _error(404, "unknown_model", "requested model is not available")
+        service = _snapshots(request)
+        return await _run_snapshot(request, service.state_eval(body, owner="local"))
+
+    @app.get("/v2/snapshots/{snapshot_id}")
+    async def snapshot_metadata(snapshot_id: str, request: Request) -> Any:
+        service = _snapshots(request)
+        return await _run_snapshot(request, service.metadata(snapshot_id))
+
+    @app.delete("/v2/snapshots/{snapshot_id}")
+    async def delete_snapshot(snapshot_id: str, request: Request) -> Any:
+        service = _snapshots(request)
+
+        async def _deleted() -> JSONResponse:
+            freed = await service.delete(snapshot_id)
+            return JSONResponse({"deleted": snapshot_id, "freed_bytes": freed})
+
+        return await _run_snapshot(request, _deleted())
+
+    @app.get("/v2/snapshots/{snapshot_id}/vectors")
+    async def snapshot_vectors(
+        snapshot_id: str,
+        request: Request,
+        which: str = Query(...),
+        row_begin: int = Query(default=0, ge=0),
+        row_end: int = Query(..., ge=1),
+    ) -> Any:
+        service = _snapshots(request)
+        return await _run_snapshot(
+            request,
+            service.vectors(
+                snapshot_id, which=which, row_begin=row_begin, row_end=row_end
+            ),
+        )
+
+    @app.get("/v2/models")
+    async def v2_models(request: Request) -> dict[str, object]:
+        return _snapshots(request).models()
 
 
 __all__ = ["ApiConfig", "create_app"]

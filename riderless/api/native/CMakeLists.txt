@@ -81,3 +81,25 @@ target_compile_options(riderless-worker-utils-test PRIVATE -Wall -Wextra -Werror
 
 enable_testing()
 add_test(NAME worker-utils COMMAND riderless-worker-utils-test)
+
+# The state-snapshot worker needs a base runtime built with
+# patches/gemma4-layer-range.patch; a stock base simply does not get it.
+file(READ "${LLAMA_SOURCE}/include/llama.h" RIDERLESS_LLAMA_H)
+string(FIND "${RIDERLESS_LLAMA_H}" "RIDERLESS PATCH: gemma4 layer range" RIDERLESS_LAYER_RANGE)
+if(NOT RIDERLESS_LAYER_RANGE EQUAL -1)
+    add_executable(riderless-snapshot-worker
+        snapshots/snapshot-worker.cpp
+        "${SHA256_ROOT}/sha256/sha256.c")
+    target_include_directories(riderless-snapshot-worker PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(riderless-snapshot-worker SYSTEM PRIVATE
+        "${LLAMA_SOURCE}/include"
+        "${LLAMA_SOURCE}/src"
+        "${LLAMA_SOURCE}/ggml/include"
+        "${LLAMA_SOURCE}/common"
+        "${LLAMA_SOURCE}/vendor"
+        "${SHA256_ROOT}")
+    target_link_libraries(riderless-snapshot-worker PRIVATE
+        ${LIB_llama-common} ${LIB_llama} ${LIB_ggml} ${LIB_ggml-base})
+    target_compile_options(riderless-snapshot-worker PRIVATE -O3 -Wall -Wextra -Werror)
+    riderless_relocatable(riderless-snapshot-worker)
+endif()
