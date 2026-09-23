@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Riderless Decision API",
+    "title": "Unridden Decision API",
     "version": "1.0.0"
   },
   "paths": {
@@ -216,7 +216,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "default": "local-gemma-riderless-v1"
+            "default": "local-gemma-unridden-v1"
           },
           "state": {
             "$ref": "#/components/schemas/State"
@@ -261,7 +261,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "const": "local-gemma-riderless-v1",
+            "const": "local-gemma-unridden-v1",
             "title": "Model"
           },
           "answers": {

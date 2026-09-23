@@ -4,8 +4,8 @@ Profile `split18-30-v1` ([ADR 0006](../decisions/0006-split-execution-for-state-
 worker `build/snapshot-worker`, llama.cpp v0.4.1 plus
 `gemma4-layer-range.patch`, Gemma 4 26B-A4B UD-Q4_K_XL, RTX 5090 (sm_120),
 context 2048, batch/ubatch 256, CUDA fusion and graphs on. Harness:
-`scripts/riderless/qualify_snapshots.py` over the frozen
-`riderless/examples/api-v1-cases.json` corpus (12 cases, 36 questions) plus one
+`scripts/unridden/qualify_snapshots.py` over the frozen
+`unridden/examples/api-v1-cases.json` corpus (12 cases, 36 questions) plus one
 synthetic 1,415-token case past the 1,024-token sliding window. Tolerances
 fixed in the script before the run.
 
@@ -74,7 +74,7 @@ from-scratch v1 answer.
 
 ## Cost (gate 8)
 
-`scripts/riderless/bench_snapshots.py`, 20 repeats, p50 / p95 ms, one 56-token
+`scripts/unridden/bench_snapshots.py`, 20 repeats, p50 / p95 ms, one 56-token
 two-option question per branch. "stock full prompt" is the same question
 answered from scratch through the stock graph (what no snapshot costs).
 

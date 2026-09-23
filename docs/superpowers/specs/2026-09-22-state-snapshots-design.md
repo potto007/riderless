@@ -1,12 +1,12 @@
 # Reusable model-state snapshots at blocks 18 and 30
 
 Status: proposed design, 2026-09-22. No runtime implementation or new GPU results.
-Repository baseline: Riderless `7cefca20b625d35c5196081bd5a932a9d56c7bb5`.
+Repository baseline: Unridden `7cefca20b625d35c5196081bd5a932a9d56c7bb5`.
 
 ## Intended result
 
 Save a model's state after block 18 and after all 30 blocks. A caller can later
-submit either snapshot together with a new prompt or a Riderless question and
+submit either snapshot together with a new prompt or a Unridden question and
 receive a new state or a typed decision. The original snapshot remains reusable
 for independent branches. Decision calls generate zero answer tokens.
 
@@ -36,18 +36,18 @@ reader. The existing trained early head remains confined to its validated task.
 
 ## Verified starting points
 
-- `riderless/api/compiler.py` renders a question from state, instructions, and
-  ordered choices. `riderless/api/native/worker.cpp` already reuses an exact
+- `unridden/api/compiler.py` renders a question from state, instructions, and
+  ordered choices. `unridden/api/native/worker.cpp` already reuses an exact
   token prefix within a request, and clears state between requests.
 - The worker's shared-prefix code excludes a boundary token that could merge
   with a suffix. Snapshot compilation must preserve this protection.
 - The earlier local-ai probe exports one 2,816-value raw residual after block 18
   at the final prompt position. It does not export a resumable prefix. Its
   fallback runs the original prompt in a separate full context.
-- The local Riderless runtime manifest pins its tested build to llama.cpp
+- The local Unridden runtime manifest pins its tested build to llama.cpp
   `v0.4.1`, commit `b29c606e28a01b1bc8c1351026a0fa6e616bf6c4`. The original probe
   patch targets the older `afeebe103bd99cda8f5dfaefcabadf890db7fda7` revision and
-  cannot be applied as though it were already part of Riderless.
+  cannot be applied as though it were already part of Unridden.
 - The installed `llama.h` exposes sequence state save/restore. Its
   `PARTIAL_ONLY` flag concerns SWA/recurrent memory, not a selected block range.
   `ON_DEVICE` state is not a durable byte payload and a later save for the same
@@ -103,7 +103,7 @@ Compile supplied information into a fixed prefix, before any particular
 question. This is the preferred anchor for independent questions about the
 same information. The prefix uses a new neutral, versioned compiler profile so
 both a plain prompt and a finite decision can follow it. This changes the prompt
-from Riderless v1 and requires its own quality comparison.
+from Unridden v1 and requires its own quality comparison.
 
 The compiler owns the chat template and creates a verified token splice point.
 It stores the exact prefix tokens, the unresolved boundary text/token suffix,
@@ -114,7 +114,7 @@ No arbitrary caller-provided special tokens or system-message replacement.
 
 ### Existing decision or prompt readout
 
-Also permit capture at the actual answer position of a prepared Riderless
+Also permit capture at the actual answer position of a prepared Unridden
 question, or at the final position of a supplied prompt. This preserves the
 question-dependent state the user asked to snapshot.
 
@@ -244,7 +244,7 @@ Create both checkpoints:
 ```json
 POST /v2/snapshots
 {
-  "model": "local-gemma-riderless-v1",
+  "model": "local-gemma-unridden-v1",
   "input": {
     "kind": "context",
     "state": {"message": "The merchant issued a refund last week; it has not arrived."}
@@ -256,7 +256,7 @@ POST /v2/snapshots
 ```
 
 `input.kind` is a tagged union: `context` carries state; `decision` carries state
-and one existing Riderless question; `prompt` carries validated messages.
+and one existing Unridden question; `prompt` carries validated messages.
 Only context input supports the neutral reusable-prefix contract. Decisions and
 prompts produce literal readout snapshots with the follow-up semantics above.
 
@@ -275,7 +275,7 @@ Ask independent typed questions; using `snap_18_a` causes explicit promotion:
 ```json
 POST /v2/decisions
 {
-  "model": "local-gemma-riderless-v1",
+  "model": "local-gemma-unridden-v1",
   "snapshot": {"id": "snap_18_a", "relationship": "followup"},
   "questions": {
     "status": {
@@ -312,7 +312,7 @@ POST /v2/state-evaluations
 
 This returns a child snapshot ID and bounded diagnostics/artifact references.
 It generates zero tokens and makes no claim that the exported vector is a
-human-readable answer. Callers wanting a decision supply a Riderless question;
+human-readable answer. Callers wanting a decision supply a Unridden question;
 text generation would be a separate explicit output mode outside this design.
 
 Add metadata lookup, expiry/delete, and bounded vector artifact retrieval.
@@ -348,7 +348,7 @@ because they contain the supplied state as readable text. Store manifest schema
 GPU-resident parents use sequence branching only within a compatible context;
 `llama_memory_seq_cp` is a candidate, subject to the split-context tests. Pin
 parent cells and prevent eviction, position shifts or SWA recycling while a
-branch references them. Start with serialized requests, as Riderless already
+branch references them. Start with serialized requests, as Unridden already
 does. Clear only child suffix state on completion or cancellation. Failed native
 restore invalidates its scratch context before another request can use it.
 
@@ -429,7 +429,7 @@ change fusion, so compare instrumented and uninstrumented execution separately.
    merges, assistant stubs, multi-chunk prefill, exact context limits and empty
    or unsupported suffixes. A replacement-question test must prove it used the
    context parent and did not retain the old question.
-7. **Task quality:** run the existing Riderless suites plus a new frozen set of
+7. **Task quality:** run the existing Unridden suites plus a new frozen set of
    follow-up questions and ambiguous cases. Keep original-v1, new-compiler and
    split-runtime effects separate. Do not reuse the PoC's temperature or 0.71
    routing gate without qualifying the new graph/compiler path.
@@ -452,16 +452,16 @@ seen. No production service restart is required for a standalone harness.
    memory ownership and identity tests in an isolated llama.cpp patch. Tag it
    `split18-30-v1`; profiles are not silently interchangeable.
 3. Add S18 persistence and promotion, paired S18/S30 capture, prompt/readout
-   boundary handling, request isolation, then the versioned Riderless endpoints.
+   boundary handling, request isolation, then the versioned Unridden endpoints.
 4. Qualify task quality and cost. Only then consider an early-head cascade that
    continues retained suffix activations instead of rerunning them.
 5. If direct vector input is required, run the adapter experiment as a distinct
    milestone and advertise the capability only after its evaluation passes.
 
 Keep concerns separate: a Python snapshot schema/compiler, a store and lease
-manager, a native range-execution adapter, and a Riderless response mapper.
-Proposed locations are `riderless/api/snapshots/` and
-`riderless/api/native/snapshots/`, plus a recorded runtime patch. Extend the
+manager, a native range-execution adapter, and a Unridden response mapper.
+Proposed locations are `unridden/api/snapshots/` and
+`unridden/api/native/snapshots/`, plus a recorded runtime patch. Extend the
 worker command protocol with explicit create/promote/evaluate/inspect/drop
 operations. Large tensors stay in the native/store boundary, not the existing
 4 MiB JSONL response stream. The API passes artifact IDs and bounded metadata.
@@ -471,8 +471,8 @@ of the split runtime remain subsequent work.
 
 ## Sources
 
-- Riderless baseline: `riderless/api/compiler.py`,
-  `riderless/api/native/worker.cpp`, `riderless/api/README.md`.
+- Unridden baseline: `unridden/api/compiler.py`,
+  `unridden/api/native/worker.cpp`, `unridden/api/README.md`.
 - Local runtime inspected: `build/llama-base-v0.4.1/build.json`,
   `headers/include/llama.h:869-937`, `headers/src/llama-kv-cache.cpp:2236`,
   and `headers/src/models/gemma4.cpp` below that build directory.

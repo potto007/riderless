@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to riderless. The format follows
+Notable changes to unridden. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -9,21 +9,40 @@ worker protocol can change between minor versions without a deprecation
 period. Each release records which llama.cpp revision and which model file its
 published measurements were taken on.
 
+## 0.3.0 - Unreleased
+
+### Changed
+
+- Renamed the community project to Unridden across the Python distribution,
+  import package, command line tools, native workers, container image, model
+  identifier, protocol identifiers, documentation, and examples. The new
+  distribution and imports are `unridden`; the commands are `unridden-api` and
+  `unridden-semif`; the model identifier is `local-gemma-unridden-v1`.
+- The first two tagged releases used the former name, Riderless. Their published
+  assets and existing installations retain their original names and wire IDs.
+  Installations moving from v0.2.0 to v0.3.0 must update imports, commands,
+  worker bundles, environment variables, and request model IDs. The HTTP route
+  paths and JSON field names are unchanged.
+
+The v0.1.0 and v0.2.0 entries below describe the features under their current
+Unridden names. Assets attached to those historical GitHub releases keep their
+original filenames.
+
 ## 0.2.0 - 2026-09-22
 
 ### Added
 
 - Prebuilt worker bundles, published from GitHub Releases, so a first answer
-  needs no compiler. `python -m riderless.api.cli worker fetch` (also
-  `scripts/riderless/fetch_worker.py`) picks `cuda13`, `cuda12` or `cpu` from
+  needs no compiler. `python -m unridden.api.cli worker fetch` (also
+  `scripts/unridden/fetch_worker.py`) picks `cuda13`, `cuda12` or `cpu` from
   the NVIDIA driver `nvidia-smi` reports and says which, verifies the download
   against the release's `SHA256SUMS`, checks GitHub's build provenance with
   `gh attestation verify` when `gh` is installed (`--require-attestation`
   makes a missing or failing check fatal instead of a warning), and unpacks
   into a `--output` that must not already exist
   ([ADR 0005](docs/decisions/0005-relocatable-prebuilt-worker-bundles.md)).
-- `riderless.api.native.bundle`, which defines the install layout
-  (`build.json`, `build/riderless-worker`, `runtime/*.so*`) and packs and
+- `unridden.api.native.bundle`, which defines the install layout
+  (`build.json`, `build/unridden-worker`, `runtime/*.so*`) and packs and
   unpacks it. `ApiConfig`'s defaults already point inside it, so a bundle
   unpacked into `build/api-worker` needs no flags.
 - A release workflow on `v*` tags building all three flavors in NVIDIA's devel
@@ -31,7 +50,7 @@ published measurements were taken on.
   `CMAKE_CUDA_ARCHITECTURES=80;86;89;90;120`, attaching the tarballs and a
   `SHA256SUMS` to the release, and attesting them with
   `actions/attest-build-provenance`.
-- A CUDA 13 container image, `ghcr.io/potto007/riderless:<version>-cuda13`,
+- A CUDA 13 container image, `ghcr.io/potto007/unridden:<version>-cuda13`,
   built from `docker/Dockerfile`. It expects a GGUF mounted at `/models` and
   serves on 8090.
 - `build_base_runtime.py --no-native` (`GGML_NATIVE=OFF`), and CUDA builds now
@@ -51,9 +70,9 @@ published measurements were taken on.
 - **The worker takes `--runtime-dir`** instead of a compile-time backend
   directory, and the backend passes the directory it just hashed. The worker
   links with an `$ORIGIN/../runtime` run path and no absolute path, so its
-  sha256 no longer depends on where it was built. `riderless-so1-probe` takes
+  sha256 no longer depends on where it was built. `unridden-so1-probe` takes
   the same argument, and `bench_competitor_so1.py` gained `--runtime-dir`.
-- `riderless.api.native.build` copies the base runtime into the bundle and
+- `unridden.api.native.build` copies the base runtime into the bundle and
   re-hashes the copy, builds in a scratch directory it removes on success, and
   leaves `build/` holding only the executable.
 - `build_base_runtime.py` configures llama.cpp with `LLAMA_OPENSSL=OFF`. The
@@ -76,7 +95,7 @@ page says otherwise.
 
 ### Added
 
-- `riderless` Python package: a local, non-generative decision API. One owned
+- `unridden` Python package: a local, non-generative decision API. One owned
   llama.cpp child process prefills a compiled prompt and reads final-position
   logits over single-token labels, so a request produces zero generated
   tokens.
@@ -89,12 +108,12 @@ page says otherwise.
   `POST /v1/systemone` is a compatibility alias for `POST /v1/decisions`,
   offered as an interoperability path for clients written against that
   request shape.
-- `riderless.api.cli` with `run` (evaluate a JSON or JSONL file of requests
+- `unridden.api.cli` with `run` (evaluate a JSON or JSONL file of requests
   into JSONL, no port needed) and `serve` (run the ASGI app on a loopback
   listener).
-- SemIf row import and export helpers in `riderless.api.semif`.
-- Native worker under `riderless/api/native`: a C++ worker built against a
-  user-provided llama.cpp checkout, plus `riderless.api.native.build`, which
+- SemIf row import and export helpers in `unridden.api.semif`.
+- Native worker under `unridden/api/native`: a C++ worker built against a
+  user-provided llama.cpp checkout, plus `unridden.api.native.build`, which
   verifies the base runtime before compiling and records source, executable,
   runtime, and llama.cpp revision hashes in a build manifest. Startup pins the
   worker executable and the runtime files and bundle; the model file's SHA-256
@@ -131,8 +150,8 @@ page says otherwise.
   [re-validation results](docs/results/llama-v0.4.1-revalidation.md)).
 - `build_base_runtime.py --cuda-architectures`, passed through as
   `CMAKE_CUDA_ARCHITECTURES`. Omitted, llama.cpp's own default applies.
-- Validation and use-case scripts under `scripts/riderless`, with the
-  matching request and expectation fixtures under `riderless/examples`:
+- Validation and use-case scripts under `scripts/unridden`, with the
+  matching request and expectation fixtures under `unridden/examples`:
   seven hand-written use-case suites (241 cases, 1,286 questions) with frozen
   gold labels, a validation harness with sibling-independence, repeat-identity
   and cross-question contamination probes, and `compare_observations.py` and
@@ -142,13 +161,13 @@ page says otherwise.
   eight open decision-readout projects for ideas worth adopting, and
   `docs/results/open-model-comparison.md` runs three of them on the seven
   suites with the same scorer: Kev-9B and Laya as shipped, and so1
-  (open-alternative-jev) on riderless's own GGUF and llama.cpp build through a
-  backend written for the purpose (`riderless/api/native/so1_probe.cpp`), in
+  (open-alternative-jev) on unridden's own GGUF and llama.cpp build through a
+  backend written for the purpose (`unridden/api/native/so1_probe.cpp`), in
   both its separate and packed modes. The drivers
   (`bench_competitor_kev.py`, `bench_competitor_laya.py`,
   `bench_competitor_so1.py`, `compare_competitor_outcomes.py`) and a
   page-cache eviction helper (`evict_file_cache.py`) ship under
-  `scripts/riderless`.
+  `scripts/unridden`.
 - A whitepaper (`docs/whitepaper.md`) covering the design, the measured
   results, and a generative baseline measured with llama-bench on the
   identical GGUF.

@@ -1,14 +1,14 @@
-# Riderless: reading decisions off a local LLM without letting it talk
+# Unridden: reading decisions off a local LLM without letting it talk
 
 A zero-generated-token decision API built on Gemma 4 26B-A4B and llama.cpp,
 what it is for, and how it measures against the same model used generatively.
 
-Paul Otto, 21 September 2026. Repo: github.com/potto007/riderless
+Paul Otto, 21 September 2026. Repo: github.com/potto007/unridden
 (Apache-2.0).
 
 ## Abstract
 
-Riderless answers finite questions about a piece of text (which option, how
+Unridden answers finite questions about a piece of text (which option, how
 severe on a scale, true or false) by running one forward pass of a local model
 and reading the probability distribution over a handful of single-token labels
 at the last position. It never samples a token. On an RTX 5090 a single
@@ -30,7 +30,7 @@ who explains the decision afterwards and is often wrong about why. Kahneman's
 System 1 and System 2 map onto the same split. A generative language model,
 asked to classify something, is both at once: it decides somewhere in the
 forward pass and then spends most of its compute writing the rider's story.
-Riderless keeps the elephant and fires the rider. No token is ever generated.
+Unridden keeps the elephant and fires the rider. No token is ever generated.
 The API reads the decision directly from the logits and returns it as numbers.
 
 Concretely, it is a FastAPI service that owns one persistent llama.cpp child
@@ -45,7 +45,7 @@ process. A request carries a *state* (any text or JSON) and up to 32
 
 The request and response shapes follow TypeSafe's publicly documented Jev
 interface, so a client written against that shape can point at a local box.
-That is the whole relationship: Riderless is independent of TypeSafe and is not
+That is the whole relationship: Unridden is independent of TypeSafe and is not
 an implementation of their model.
 
 ## What it aims to do
@@ -182,7 +182,7 @@ label.
 ## Against the same model used generatively
 
 This is the comparison the project was built to win, so it is worth being
-careful about what was measured. Riderless timings are full HTTP round trips
+careful about what was measured. Unridden timings are full HTTP round trips
 through the ASGI app, measured by the validation harness on native-v8. The
 generative figures are from `llama-bench` on the identical GGUF and the same
 llama.cpp revision (afeebe1), full GPU offload, three repetitions each, run on
@@ -201,20 +201,20 @@ Table 2. llama-bench, Gemma 4 26B-A4B UD-Q4_K_XL, RTX 5090, batch 2048. Decode
 is 4.4 ms per token regardless of how many.
 
 So the arithmetic is simple. A generative classifier pays the same prefill
-Riderless pays, then 4.4 ms per output token. The smallest possible generative
+Unridden pays, then 4.4 ms per output token. The smallest possible generative
 answer, a bare option id in JSON, is around 8 to 12 tokens: 35 to 55 ms on top
 of prefill, roughly doubling the latency of a short question. A one-line
 justification (32 tokens) triples it. Anything resembling chain-of-thought (128
 tokens) is more than ten times the cost of the readout for the same prefill.
 
-| Shape | Riderless, measured | Generative, minimal JSON (est.) | Generative, 32-token answer (est.) |
+| Shape | Unridden, measured | Generative, minimal JSON (est.) | Generative, 32-token answer (est.) |
 | --- | ---: | ---: | ---: |
 | 1 question, 111-token prompt | 33 ms | about 70 to 90 ms | about 175 ms |
 | 1 question over a 1,007-token state | 151 ms | about 130 ms | about 230 ms |
 | 8 questions over that state, sequential with prefix reuse | 399 ms | about 1.0 s (8 calls) or about 450 ms (one call, 80-token JSON) | about 1.8 s (8 calls) |
 | 8 questions over that state, batched mode | 278 ms | as above | as above |
 
-Table 3. Riderless rows are harness medians (native-v8 sequential, native-v9
+Table 3. Unridden rows are harness medians (native-v8 sequential, native-v9
 batched). Generative rows are prefill plus decode from Table 2, with no
 parsing, retries, or template overhead added. The one-call generative variant
 returns eight answers in one JSON blob, so it has no per-question distribution
@@ -222,7 +222,7 @@ and fails as a unit if the JSON is malformed.
 
 The second row is the interesting one. On a single question over a long state,
 the readout is not faster than a minimal generative answer; the 151 ms is
-dominated by the 1,007-token prefill either way, and Riderless spends a little
+dominated by the 1,007-token prefill either way, and Unridden spends a little
 extra on its own overhead. The gap opens with question count and with answer
 length, and it opens fast. Ask eight things about one document and the readout
 is two to six times cheaper than the cheapest generative alternative, while
@@ -232,7 +232,7 @@ Latency is the smaller half of the argument. The larger half is what comes
 back. A generative classifier returns a string. To get a probability you either
 sample many times (multiplying the cost) or ask for logprobs of a constrained
 output, at which point you have rebuilt this project inside a chat endpoint
-with less control over the readout position. Riderless returns the distribution
+with less control over the readout position. Unridden returns the distribution
 on every call, deterministically, with the prompt hash and the label-token
 mapping beside it.
 
@@ -319,7 +319,7 @@ does not compare answers across requests.
 
 ## Status
 
-The public repository is at github.com/potto007/riderless under Apache-2.0,
+The public repository is at github.com/potto007/unridden under Apache-2.0,
 with the package, the native worker, the validation harness, the seven suites,
 the CLI, the results documents, and community files mirrored from
 TrustedCourier (DCO sign-off, code of conduct, security policy, CI on Python

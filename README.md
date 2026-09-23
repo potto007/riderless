@@ -1,4 +1,4 @@
-# riderless
+# Unridden
 
 A local decision API that answers structured questions by reading logits, with
 zero generated tokens. You supply a `state` and a named map of questions; the
@@ -9,7 +9,7 @@ It is not a chat model, not a text generator, and not a drop-in replacement for
 a hosted service. It runs one llama.cpp child process on your own machine,
 answers one request at a time, and never samples or appends a token.
 
-## Why riderless
+## Why Unridden
 
 Jonathan Haidt describes the mind as a rider on an elephant: the elephant is the
 fast, automatic part that actually moves, and the rider is the conscious
@@ -28,7 +28,7 @@ the prompt.
 
 ```json
 {
-  "model": "local-gemma-riderless-v1",
+  "model": "local-gemma-unridden-v1",
   "state": {"message": "The card was charged twice"},
   "questions": {
     "route": {
@@ -56,7 +56,7 @@ only `P(true)`.
 
 ```json
 {
-  "model": "local-gemma-riderless-v1",
+  "model": "local-gemma-unridden-v1",
   "answers": {
     "route": {
       "type": "choice",
@@ -111,13 +111,13 @@ is faster and gives up that sibling independence:
 [docs/decisions/0004](docs/decisions/0004-optional-batched-question-evaluation.md)
 and [docs/results/batched-mode.md](docs/results/batched-mode.md).
 
-Riderless always reads the full depth of the model. An earlier proof of concept
+Unridden always reads the full depth of the model. An earlier proof of concept
 exited at block 18 of 30 with a head trained for one three-class task, and fell
 back to a full pass below a confidence threshold. It was set aside for the
 general API ([ADR 0001](docs/decisions/0001-full-depth-label-readout-in-an-owned-child.md));
 the [whitepaper](docs/whitepaper.md) has the numbers.
 
-![Early-exit cascade from the earlier proof of concept, not part of riderless: blocks 1 to 18 and a trained head answer when the top probability is at least 0.71, otherwise a full-depth pass reads the label logits](docs/images/early-exit-cascade.svg)
+![Early-exit cascade from the earlier proof of concept, not part of unridden: blocks 1 to 18 and a trained head answer when the top probability is at least 0.71, otherwise a full-depth pass reads the label logits](docs/images/early-exit-cascade.svg)
 
 ## Requirements
 
@@ -154,15 +154,15 @@ uv sync
 #    driver and says which; --flavor overrides it. The download is checked
 #    against the release's SHA256SUMS, and against GitHub's build provenance
 #    when `gh` is installed (--require-attestation makes that mandatory).
-uv run python -m riderless.api.cli worker fetch --output build/api-worker
+uv run python -m unridden.api.cli worker fetch --output build/api-worker
 
 # 3. Download the model into models/ (17 GB, Apache-2.0, not gated).
 uv run --with huggingface_hub hf download unsloth/gemma-4-26B-A4B-it-GGUF \
   gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --local-dir models
 
 # 4. Answer the bundled hello request.
-uv run python -m riderless.api.cli run \
-  --input riderless/examples/hello.json --output hello-answers.jsonl --gpu
+uv run python -m unridden.api.cli run \
+  --input unridden/examples/hello.json --output hello-answers.jsonl --gpu
 ```
 
 `hello.json` is a customer message ("I was charged twice for the same order")
@@ -172,7 +172,7 @@ about 11 seconds, nearly all of it loading the model, and writes:
 
 ```json
 {
-  "model": "local-gemma-riderless-v1",
+  "model": "local-gemma-unridden-v1",
   "answers": {
     "route": {"type": "choice", "choice": "billing",
               "probabilities": {"billing": 0.99999998, "technical": 2.2e-08, "sales": 1.3e-09},
@@ -193,10 +193,10 @@ are typical and are not calibrated; see [Limitations](#limitations).)
 To serve it over HTTP instead:
 
 ```bash
-uv run python -m riderless.api.cli serve --gpu --host 127.0.0.1 --port 8090
+uv run python -m unridden.api.cli serve --gpu --host 127.0.0.1 --port 8090
 curl -s http://127.0.0.1:8090/health
 curl -s -X POST http://127.0.0.1:8090/v1/decisions \
-  -H 'content-type: application/json' --data @riderless/examples/hello.json
+  -H 'content-type: application/json' --data @unridden/examples/hello.json
 ```
 
 Or in a container, which carries the cuda13 worker and expects your GGUF
@@ -205,11 +205,11 @@ driver:
 
 ```bash
 docker run --gpus all -p 8090:8090 -v "$PWD/models:/models:ro" \
-  ghcr.io/potto007/riderless:latest-cuda13
+  ghcr.io/potto007/unridden:latest-cuda13
 ```
 
 Step 4 and `serve` use `ApiConfig`'s defaults for the worker
-(`build/api-worker/build/riderless-worker`), the manifest
+(`build/api-worker/build/unridden-worker`), the manifest
 (`build/api-worker/build.json`) and the model
 (`models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`); pass `--worker`, `--manifest`
 and `--model-path` to use another layout. `run` accepts one JSON object, a JSON
@@ -241,9 +241,9 @@ Git, CMake, a C++ toolchain and, for `--cuda`, the CUDA toolkit.
 ```bash
 # Replace 120 with your GPU's compute capability (120 is an RTX 5090; 89 is a
 # 4090). Drop --cuda for CPU only.
-uv run python scripts/riderless/build_base_runtime.py \
+uv run python scripts/unridden/build_base_runtime.py \
   --out build/llama-base --cuda --cuda-architectures 120
-uv run python -m riderless.api.native.build \
+uv run python -m unridden.api.native.build \
   --base build/llama-base --output build/api-worker
 ```
 
@@ -261,7 +261,7 @@ this machine. A CUDA build also copies `libcudart`, `libcublas` and
 `libcublasLt` in beside the backend so the result needs only a driver;
 `--no-cuda-redist` skips that.
 
-`riderless.api.native.build` compiles the worker against that runtime, runs the
+`unridden.api.native.build` compiles the worker against that runtime, runs the
 worker's CPU unit test, copies the runtime libraries in beside the executable,
 and records every input hash in its own `build.json`. The output directory must
 not already exist; delete it to rebuild. No model is loaded and no GPU work
@@ -273,11 +273,11 @@ Either route produces the same bundle, and it names no path outside itself:
 
 ```
 build/api-worker/build.json                the manifest, schema 2
-build/api-worker/build/riderless-worker    the executable
+build/api-worker/build/unridden-worker    the executable
 build/api-worker/runtime/*.so*             the libraries it links and dlopens
 ```
 
-`python -m riderless.api.native.bundle pack|unpack` moves one between machines,
+`python -m unridden.api.native.bundle pack|unpack` moves one between machines,
 and that is what the release workflow publishes. A worker directory built
 before 0.2.0 recorded absolute paths (manifest schema 1); it still starts, but
 it cannot be moved or packed, so rebuild it if you want either.
@@ -295,7 +295,7 @@ interoperability path for clients written against that request shape.
 
 The batch CLI creates its output file only if the path does not exist, and
 starts one backend for the whole batch. A JSONL adapter for SemIf-style rows
-(`python -m riderless.api.semif to-api|from-api`) preserves row ids and option
+(`python -m unridden.api.semif to-api|from-api`) preserves row ids and option
 order.
 
 ## Errors
@@ -306,7 +306,7 @@ stderr is never copied into an HTTP body.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 400 | `malformed_json`, `invalid_content_length` | The body is not valid JSON, or the length header is unusable. |
-| 404 | `unknown_model` | `model` is not `local-gemma-riderless-v1`. |
+| 404 | `unknown_model` | `model` is not `local-gemma-unridden-v1`. |
 | 408 | `timeout` | The request exceeded the configured timeout. Retryable. The child is reaped. |
 | 413 | `request_too_large` | Body over the configured limit (1 MiB by default). |
 | 415 | `unsupported_media_type` | Content type is not `application/json`. |
@@ -392,7 +392,7 @@ v0.4.1 is reported separately rather than written over them.
   [docs/results/batched-mode.md](docs/results/batched-mode.md)
 - Against three open decision projects: `jaredpalmer/kev-9b` and
   `convaiinnovations/laya` run on the same seven suites with the same scorer,
-  and `so1` (open-alternative-jev) run on riderless's own GGUF and llama.cpp
+  and `so1` (open-alternative-jev) run on unridden's own GGUF and llama.cpp
   build so only its prompt and readout design differ, in both its separate and
   packed modes.
   [docs/results/open-model-comparison.md](docs/results/open-model-comparison.md)
