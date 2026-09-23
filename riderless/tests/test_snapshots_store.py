@@ -85,6 +85,7 @@ async def _register(
     parent: str | None = None,
     completed_blocks: int = 30,
     ttl_seconds: int = 3600,
+    promotion_of: str | None = None,
 ) -> str:
     snapshot_id = new_snapshot_id()
     await store.register(
@@ -101,6 +102,7 @@ async def _register(
         persistence=persistence,  # type: ignore[arg-type]
         prompt_sha256="c" * 64,
         ttl_seconds=ttl_seconds,
+        promotion_of=promotion_of,
     )
     return snapshot_id
 
@@ -205,6 +207,42 @@ async def test_disk_snapshot_is_available_after_store_restarts(tmp_path: Path) -
     assert record.resident is False
     assert record.messages == [{"role": "user", "content": "x"}]
     assert (await replacement.restore(snapshot_id)).resident is True
+
+
+@pytest.mark.asyncio
+async def test_only_marked_same_prefix_child_is_rebuilt_as_promotion(
+    tmp_path: Path,
+) -> None:
+    native = FakeNativeIO()
+    clock = Clock()
+    store = _store(tmp_path, native, host_bytes=1000, clock=clock)
+    parent = await _register(
+        store, host_bytes=50, persistence="disk", completed_blocks=18
+    )
+    paired_child = await _register(
+        store, host_bytes=20, persistence="disk", parent=parent
+    )
+
+    replacement = _store(tmp_path, native, host_bytes=1000, clock=clock)
+    assert replacement.get(paired_child).parent == parent
+    assert replacement.memoized_promotion(parent) is None
+
+    promoted = await _register(
+        replacement,
+        host_bytes=20,
+        persistence="disk",
+        parent=parent,
+        promotion_of=parent,
+        ttl_seconds=1,
+    )
+    restarted = _store(tmp_path, native, host_bytes=1000, clock=clock)
+    assert restarted.memoized_promotion(parent) == promoted
+
+    clock.now += 2
+    assert restarted.memoized_promotion(parent) is None
+    await restarted.expire()
+    assert not (tmp_path / "snapshots" / promoted).exists()
+    assert restarted.get(paired_child).parent == parent
 
 
 @pytest.mark.asyncio

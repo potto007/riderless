@@ -94,6 +94,7 @@ class SnapshotRecord:
     # The derived 30 snapshot promoted from this 18 snapshot, memoized so a
     # second full-depth question does not repeat promotion (design "S18").
     promotion_child: str | None = None
+    promotion_of: str | None = None
     leases: int = 0
     refcount: int = 0
     last_used: int = 0
@@ -202,6 +203,7 @@ class SnapshotStore:
         persistence: Persistence,
         prompt_sha256: str,
         ttl_seconds: int,
+        promotion_of: str | None = None,
     ) -> SnapshotRecord:
         await self.expire()
         if not _valid_id(snapshot_id):
@@ -211,6 +213,8 @@ class SnapshotStore:
         for reference in (parent, context_parent):
             if reference is not None and reference not in self._records:
                 raise SnapshotNotFound("referenced parent snapshot is unknown")
+        if promotion_of is not None and promotion_of != parent:
+            raise IntegrityError("promotion must reference its direct parent")
         # A new child has no refcount yet. Pin its parents while the budget
         # manager chooses victims, then publish the new reference.
         with self.lease(
@@ -235,7 +239,10 @@ class SnapshotStore:
                 expires_at=now + ttl_seconds,
                 last_used=self._next_tick(),
                 persisted_host_bytes=host_bytes,
+                promotion_of=promotion_of,
             )
+            if promotion_of is not None:
+                self._validate_promotion(record, self._records[promotion_of])
             self._records[snapshot_id] = record
             self._resident_bytes += host_bytes
             if parent is not None:
@@ -252,15 +259,35 @@ class SnapshotStore:
 
     def memoize_promotion(self, parent_id: str, child_id: str) -> None:
         parent = self.get(parent_id)
+        self._validate_promotion(self.get(child_id), parent)
         parent.promotion_child = child_id
 
     def memoized_promotion(self, parent_id: str) -> str | None:
         parent = self.get(parent_id)
         child_id = parent.promotion_child
-        if child_id is None or child_id not in self._records:
+        child = self._records.get(child_id) if child_id is not None else None
+        if child is None or child.expires_at <= self._now():
             parent.promotion_child = None
             return None
         return child_id
+
+    @staticmethod
+    def _validate_promotion(child: SnapshotRecord, parent: SnapshotRecord) -> None:
+        if (
+            child.promotion_of != parent.id
+            or child.parent != parent.id
+            or parent.completed_blocks != 18
+            or child.completed_blocks != 30
+            or child.owner != parent.owner
+            or child.boundary != parent.boundary
+            or child.messages != parent.messages
+            or child.answer_prefix != parent.answer_prefix
+            or child.tokens != parent.tokens
+            or child.prompt_sha256 != parent.prompt_sha256
+            or child.context_parent
+            != (parent.context_parent if parent.boundary == "readout" else None)
+        ):
+            raise IntegrityError("promoted snapshot does not match its 18-block parent")
 
     # -- access ------------------------------------------------------------
 
@@ -418,6 +445,7 @@ class SnapshotStore:
             "prompt_sha256": record.prompt_sha256,
             "parent": record.parent,
             "context_parent": record.context_parent,
+            "promotion_of": record.promotion_of,
             "expires_at": record.expires_at,
             "files": {
                 name: {"bytes": entry.bytes, "sha256": entry.sha256}
@@ -478,6 +506,7 @@ class SnapshotStore:
             ("boundary", record.boundary),
             ("parent", record.parent),
             ("context_parent", record.context_parent),
+            ("promotion_of", record.promotion_of),
             ("messages", record.messages),
             ("answer_prefix", record.answer_prefix),
             ("host_bytes", record.persisted_host_bytes),
@@ -547,6 +576,7 @@ class SnapshotStore:
             host_bytes = manifest.get("host_bytes")
             created_at = manifest.get("created_at")
             expires_at = manifest.get("expires_at")
+            promotion_of = manifest.get("promotion_of")
             if (
                 not isinstance(owner, str)
                 or not owner
@@ -555,6 +585,12 @@ class SnapshotStore:
                 or host_bytes <= 0
                 or not isinstance(created_at, (int, float))
                 or not isinstance(expires_at, (int, float))
+                or (
+                    promotion_of is not None
+                    and (
+                        not isinstance(promotion_of, str) or not _valid_id(promotion_of)
+                    )
+                )
             ):
                 raise IntegrityError("snapshot metadata is malformed")
             try:
@@ -582,6 +618,7 @@ class SnapshotStore:
                     durable_files=files,
                     last_used=self._next_tick(),
                     persisted_host_bytes=host_bytes,
+                    promotion_of=promotion_of,
                 )
             except (KeyError, AttributeError, TypeError, ValueError) as error:
                 raise IntegrityError("snapshot manifest is malformed") from error
@@ -597,6 +634,20 @@ class SnapshotStore:
                 if parent is None:
                     raise IntegrityError("snapshot parent is missing from disk")
                 parent.refcount += 1
+            if record.promotion_of is not None:
+                parent = self._records.get(record.promotion_of)
+                if parent is None:
+                    raise IntegrityError("promoted parent is missing from disk")
+                self._validate_promotion(record, parent)
+                previous = (
+                    self._records[parent.promotion_child]
+                    if parent.promotion_child is not None
+                    else None
+                )
+                if record.expires_at > self._now() and (
+                    previous is None or previous.created_at < record.created_at
+                ):
+                    parent.promotion_child = record.id
 
     async def restore(self, snapshot_id: str) -> SnapshotRecord:
         """Bring a snapshot back to resident, restoring from disk if needed."""

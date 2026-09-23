@@ -279,6 +279,7 @@ class SnapshotService:
                     persistence=persistence,
                     prompt_sha256=promoted.snapshot.prompt_sha256,
                     ttl_seconds=self._default_ttl,
+                    promotion_of=record.id,
                 )
             except BaseException:
                 await self._rollback(store, [new_id])

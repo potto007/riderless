@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import struct
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -471,6 +472,29 @@ class FakeSnapshotBackend:
         return 10
 
 
+class DiskBackedFakeSnapshotBackend(FakeSnapshotBackend):
+    """Reload the fake's snapshot state from blobs in a fresh worker instance."""
+
+    async def save(self, snapshot_id: str, directory: Path) -> Any:
+        from riderless.api.snapshots.schema import WorkerFileEntry
+
+        payload = json.dumps(self._snaps[snapshot_id], sort_keys=True).encode()
+        (directory / "state.json").write_bytes(payload)
+        return {
+            "state.json": WorkerFileEntry(
+                bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest()
+            )
+        }
+
+    async def load(
+        self, snapshot_id: str, directory: Path, files: dict[str, str]
+    ) -> None:
+        payload = (directory / "state.json").read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == files["state.json"]
+        self._snaps[snapshot_id] = json.loads(payload)
+        self._resident.add(snapshot_id)
+
+
 @asynccontextmanager
 async def client_for(
     backend: FakeSnapshotBackend, tmp_path: Path, **overrides: Any
@@ -622,6 +646,47 @@ async def test_decide_promotes_once_and_reuses(tmp_path: Path) -> None:
     # The second decision reuses the memoized promotion.
     assert second.json()["snapshot_usage"]["promotion"] == "reused"
     assert backend.promote_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_durable_promotion_reused_after_fresh_service_and_worker(
+    tmp_path: Path,
+) -> None:
+    first_backend = DiskBackedFakeSnapshotBackend()
+    body = CONTEXT_BODY | {"checkpoints": [18], "persistence": "disk"}
+    async with client_for(first_backend, tmp_path) as client:
+        created = await client.post("/v2/snapshots", json=body)
+        assert created.status_code == 200, created.text
+        snap18 = created.json()["snapshots"][0]["id"]
+        first = await client.post("/v2/decisions", json=_decision(snap18))
+        assert first.status_code == 200, first.text
+        promoted = first.json()["snapshot_usage"]["effective_parent"]
+        assert first.json()["snapshot_usage"]["promotion"] == "performed"
+        assert first_backend.promote_calls == 1
+
+    disk_ids = {path.name for path in (tmp_path / "snap").iterdir()}
+    assert disk_ids == {snap18, promoted}
+
+    restarted_backend = DiskBackedFakeSnapshotBackend()
+    assert restarted_backend._snaps == {}
+    async with client_for(restarted_backend, tmp_path) as client:
+        reused = await client.post("/v2/decisions", json=_decision(snap18))
+        assert reused.status_code == 200, reused.text
+        usage = reused.json()["snapshot_usage"]
+        assert usage["promotion"] == "reused"
+        assert usage["effective_parent"] == promoted
+        assert restarted_backend.promote_calls == 0
+        assert {path.name for path in (tmp_path / "snap").iterdir()} == disk_ids
+
+        deleted = await client.delete(f"/v2/snapshots/{promoted}")
+        assert deleted.status_code == 200, deleted.text
+        recreated = await client.post("/v2/decisions", json=_decision(snap18))
+        assert recreated.status_code == 200, recreated.text
+        fresh_usage = recreated.json()["snapshot_usage"]
+        assert fresh_usage["promotion"] == "performed"
+        assert fresh_usage["effective_parent"] != promoted
+        assert restarted_backend.promote_calls == 1
+        assert len(list((tmp_path / "snap").iterdir())) == 2
 
 
 @pytest.mark.asyncio
