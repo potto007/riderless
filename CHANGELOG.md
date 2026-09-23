@@ -9,7 +9,7 @@ worker protocol can change between minor versions without a deprecation
 period. Each release records which llama.cpp revision and which model file its
 published measurements were taken on.
 
-## Unreleased
+## 0.4.0 - 2026-09-23
 
 ### Added
 

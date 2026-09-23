@@ -1,6 +1,6 @@
 [project]
 name = "unridden"
-version = "0.3.0"
+version = "0.4.0"
 description = "A local, non-generative decision API: typed questions answered from final-position logits, with zero generated tokens."
 readme = "README.md"
 requires-python = ">=3.12"

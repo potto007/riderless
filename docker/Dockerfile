@@ -6,7 +6,7 @@
 # directory holding your GGUF at /models.
 #
 #   docker build -f docker/Dockerfile \
-#     --build-arg BUNDLE=dist/unridden-worker-0.3.0-linux-x64-cuda13.tar.gz .
+#     --build-arg BUNDLE=dist/unridden-worker-0.4.0-linux-x64-cuda13.tar.gz .
 #   docker run --gpus all -p 8090:8090 -v /path/to/models:/models:ro <image>
 #
 # The runtime base carries the CUDA runtime, and the bundle carries its own
