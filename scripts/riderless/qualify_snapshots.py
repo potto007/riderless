@@ -59,6 +59,25 @@ CONTEXT_INSTRUCTION = (
 )
 ANSWER_PREFIX = "Answer:\n"
 Row = dict[str, Any]
+LONG_CASE: Row = {
+    "id": "long-prefix-over-swa-window",
+    "state": " ".join(
+        f"Log line {index}: the customer asked about order {1000 + index} and was "
+        "told a reply would follow within two business days."
+        for index in range(50)
+    ),
+    "questions": {
+        "topic": {
+            "type": "choice",
+            "instructions": "What do the log lines mostly concern?",
+            "criteria": {"orders": "Questions about orders", "weather": None},
+        },
+        "promised_reply": {
+            "type": "noul",
+            "instructions": "The log says a reply was promised.",
+        },
+    },
+}
 
 
 class WorkerError(RuntimeError):
@@ -292,6 +311,9 @@ def save_blobs(client: Worker, snapshot: str, root: Path) -> dict[str, str]:
 def run(args: argparse.Namespace) -> Row:
     corpus = json.loads(Path(args.cases).read_text())
     cases = corpus["cases"][: args.limit] if args.limit else corpus["cases"]
+    # A prefix beyond the 1,024-token sliding window, where SWA-masked cells
+    # exist and a restore must still reproduce the live cache exactly.
+    cases = [*cases, LONG_CASE]
     gates = Gates()
     scratch = Path(tempfile.mkdtemp(prefix="riderless-qualify-"))
     persisted: list[Row] = []

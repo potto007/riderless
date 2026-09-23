@@ -58,6 +58,7 @@ constexpr int SPLIT_BLOCK = 18;
 constexpr size_t MAX_VECTOR_ROWS = 64;
 constexpr int MAX_TOP_LOGITS = 64;
 constexpr int NATIVE_SCHEMA_VERSION = 1;
+constexpr llama_state_seq_flags STATE_FLAGS = LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED;
 
 // Errors the caller can act on carry a protocol code. Anything else escaping
 // an inference step is an execution_error and clears the contexts.
@@ -420,9 +421,11 @@ public:
 
     blob save_state(bool upper) {
         auto * context = upper ? upper_.get() : lower_.get();
-        const size_t size = llama_state_seq_get_size(context, 0);
+        // Every cell, SWA-masked ones included: the restored cache then has
+        // the same cells in the same slots as the live one, and the same math.
+        const size_t size = llama_state_seq_get_size_ext(context, 0, STATE_FLAGS);
         blob data(size);
-        if (llama_state_seq_get_data(context, data.data(), size, 0) != size) {
+        if (llama_state_seq_get_data_ext(context, data.data(), size, 0, STATE_FLAGS) != size) {
             throw std::runtime_error("Sequence state size changed during save");
         }
         return data;
@@ -532,7 +535,7 @@ private:
     }
 
     size_t restore(llama_context * context, const blob & data) {
-        if (llama_state_seq_set_data(context, data.data(), data.size(), 0) == 0) {
+        if (llama_state_seq_set_data_ext(context, data.data(), data.size(), 0, STATE_FLAGS) == 0) {
             clear();
             throw std::runtime_error("Sequence state restore failed");
         }

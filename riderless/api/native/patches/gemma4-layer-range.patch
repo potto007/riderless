@@ -1,6 +1,6 @@
 diff -ruN a/include/llama.h b/include/llama.h
 --- a/include/llama.h	2026-09-22 17:56:28.865404846 -0600
-+++ b/include/llama.h	2026-09-22 17:56:46.364621989 -0600
++++ b/include/llama.h	2026-09-22 18:19:14.306907306 -0600
 @@ -416,6 +416,15 @@
          // a source/target/parent context
          // can be utilized in various ways, for example by sharing results or llama_memory between 2 contexts
@@ -17,6 +17,19 @@ diff -ruN a/include/llama.h b/include/llama.h
      };
  
      struct llama_model_tensor_override {
+@@ -915,6 +924,12 @@
+ // Getting the state for a seq_id with this flag invalidates all prior states gotten for that seq_id with this flag.
+ #define LLAMA_STATE_SEQ_FLAGS_ON_DEVICE 2
+ 
++// [RIDERLESS PATCH: gemma4 layer range]
++// Keep SWA-masked cells when saving a sequence. Without it a restored state
++// holds fewer cells than the live one, which changes the attention reduction
++// and therefore the numerics of every later token. Needs a swa_full context.
++#define LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED 4
++
+     typedef uint32_t llama_state_seq_flags;
+ 
+     LLAMA_API size_t llama_state_seq_get_size_ext(
 diff -ruN a/src/llama-context.cpp b/src/llama-context.cpp
 --- a/src/llama-context.cpp	2026-09-22 17:56:28.867085799 -0600
 +++ b/src/llama-context.cpp	2026-09-22 17:57:03.390138976 -0600
@@ -85,6 +98,28 @@ diff -ruN a/src/llama-graph.h b/src/llama-graph.h
          return
              cparams.embeddings              == other.cparams.embeddings              &&
              cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&
+diff -ruN a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+--- a/src/llama-kv-cache.cpp	2026-09-22 17:56:28.869902847 -0600
++++ b/src/llama-kv-cache.cpp	2026-09-22 18:19:14.308671715 -0600
+@@ -2056,8 +2056,6 @@
+         return;
+     }
+ 
+-    GGML_UNUSED(flags);
+-
+     io.write(&n_stream, sizeof(n_stream));
+ 
+     for (uint32_t s = 0; s < n_stream; ++s) {
+@@ -2078,7 +2076,8 @@
+             add_cell = add_cell && (seq_id == -1 || cells.seq_has(i, seq_id));
+ 
+             // check the cell is not SWA-masked
+-            if (add_cell && seq_id != -1) {
++            // [RIDERLESS PATCH: gemma4 layer range] unless asked to keep them
++            if (add_cell && seq_id != -1 && !(flags & LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED)) {
+                 const bool is_masked = llama_hparams::is_masked_swa(n_swa, swa_type, cells.pos_get(i), cells.seq_pos_max(seq_id));
+ 
+                 add_cell = !is_masked;
 diff -ruN a/src/llama-model.cpp b/src/llama-model.cpp
 --- a/src/llama-model.cpp	2026-09-22 17:56:28.872512343 -0600
 +++ b/src/llama-model.cpp	2026-09-22 17:56:46.366834843 -0600
