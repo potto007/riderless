@@ -103,6 +103,37 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--startup-timeout", type=float, default=defaults.startup_timeout
     )
+    parser.add_argument(
+        "--no-v1",
+        dest="v1_enabled",
+        action="store_false",
+        help="run snapshots-only; do not load the v1 backend (needs --snapshots)",
+    )
+    parser.add_argument(
+        "--snapshots",
+        action="store_true",
+        help="enable the experimental /v2 snapshot routes (off by default)",
+    )
+    parser.add_argument(
+        "--snapshot-worker", type=Path, default=defaults.snapshot_worker_path
+    )
+    parser.add_argument(
+        "--snapshot-manifest", type=Path, default=defaults.snapshot_manifest_path
+    )
+    parser.add_argument(
+        "--snapshot-store-dir", type=Path, default=defaults.snapshot_store_dir
+    )
+    parser.add_argument(
+        "--snapshot-host-bytes", type=int, default=defaults.snapshot_host_bytes
+    )
+    parser.add_argument(
+        "--snapshot-ttl", type=int, default=defaults.snapshot_default_ttl
+    )
+    parser.add_argument(
+        "--snapshot-reference",
+        action="store_true",
+        help="load the stock reference context (qualification harness only)",
+    )
 
 
 def _config(args: argparse.Namespace) -> ApiConfig:
@@ -120,6 +151,14 @@ def _config(args: argparse.Namespace) -> ApiConfig:
         threads=args.threads,
         request_timeout=args.request_timeout,
         startup_timeout=args.startup_timeout,
+        v1_enabled=args.v1_enabled,
+        snapshots_enabled=args.snapshots,
+        snapshot_worker_path=args.snapshot_worker,
+        snapshot_manifest_path=args.snapshot_manifest,
+        snapshot_store_dir=args.snapshot_store_dir,
+        snapshot_host_bytes=args.snapshot_host_bytes,
+        snapshot_default_ttl=args.snapshot_ttl,
+        snapshot_reference=args.snapshot_reference,
     )
 
 
