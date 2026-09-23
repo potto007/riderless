@@ -159,6 +159,38 @@ def export_headers(source: Path, name: str, headers: Path) -> None:
     sha256_helper(headers)
 
 
+def apply_patches(headers: Path, patches: list[Path]) -> dict[str, str]:
+    """Apply recorded source patches to the exported snapshot, in order.
+
+    The patched tree is what gets compiled and what the worker build includes,
+    so `headers/` stays the exact source of the libraries beside it. Each
+    patch is hashed into the manifest; a patched base is a different runtime
+    and its libraries hash differently, which the worker startup check sees.
+    """
+    applied: dict[str, str] = {}
+    for patch in patches:
+        resolved = patch.resolve()
+        if not resolved.is_file():
+            raise ValueError(f"Patch {patch} does not exist")
+        if resolved.name in applied:
+            raise ValueError(f"Patch {resolved.name} is named twice")
+        run(
+            [
+                "patch",
+                "--forward",
+                "--batch",
+                "--no-backup-if-mismatch",
+                "-p1",
+                "-d",
+                str(headers),
+                "-i",
+                str(resolved),
+            ]
+        )
+        applied[resolved.name] = digest(resolved)
+    return applied
+
+
 def configure(
     headers: Path,
     runtime: Path,
@@ -283,6 +315,7 @@ def build(
     cuda_redistributables: bool,
     jobs: int,
     keep_checkout: bool,
+    patches: list[Path] | None = None,
 ) -> dict[str, Any]:
     if out.exists():
         raise ValueError("Output directory exists; choose a new one")
@@ -303,6 +336,7 @@ def build(
     headers = out / "headers"
     runtime = out / "runtime"
     export_headers(source, name, headers)
+    applied_patches = apply_patches(headers, patches or [])
     options = configure(
         headers,
         runtime,
@@ -341,6 +375,9 @@ def build(
         # Kept for readers that expect the older field name.
         "cpu_only": not cuda,
         "cmake_options": options,
+        # Recorded source patches applied on top of the revision, by sha256.
+        # Empty for a stock base.
+        "patches": applied_patches,
     }
     (out / "build.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
@@ -414,6 +451,17 @@ def main() -> None:
         action="store_true",
         help="keep the fetched clone instead of deleting it after export",
     )
+    parser.add_argument(
+        "--patch",
+        dest="patches",
+        type=Path,
+        action="append",
+        default=[],
+        help="source patch to apply (patch -p1) to the exported revision before "
+        "building; repeatable, applied in order and hashed into the manifest. "
+        "The state-snapshot worker needs "
+        "riderless/api/native/patches/gemma4-layer-range.patch",
+    )
     args = parser.parse_args()
     try:
         manifest = build(
@@ -427,6 +475,7 @@ def main() -> None:
             cuda_redistributables=args.cuda_redistributables,
             jobs=args.jobs,
             keep_checkout=args.keep_checkout,
+            patches=args.patches,
         )
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
