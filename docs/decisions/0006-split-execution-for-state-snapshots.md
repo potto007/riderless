@@ -28,6 +28,11 @@ state API serializes whole sequences and has no notion of a block range.
   the last executed block through the existing `layer_inp` capture. With the
   defaults the stock graph is unchanged. The patched base is built separately
   (`build_base_runtime.py --patch`) and its manifest records the patch hash.
+- **Snapshots keep SWA-masked cells.** Stock sequence serialization drops
+  cells outside the sliding window, so a restored cache would hold fewer cells
+  than the live one and compute differently. The patch adds
+  `LLAMA_STATE_SEQ_FLAGS_KEEP_SWA_MASKED` and the worker always saves with it;
+  K/V bytes then grow linearly past the window.
 - **Fixed captures per context.** Lower always captures H18, upper always
   captures H30 and the head input. Create, promote and every branch therefore
   run identical graphs, which is what the restore-identity gate relies on.
