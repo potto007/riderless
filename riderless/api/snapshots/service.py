@@ -113,6 +113,7 @@ class SnapshotService:
         self.store: SnapshotStore | None = None
         self._guard = asyncio.Lock()
         self._busy = False
+        self._pending_ids: list[str] = []
 
     async def start(self) -> None:
         profile = await asyncio.wait_for(
@@ -129,6 +130,7 @@ class SnapshotService:
             host_bytes=self._host_bytes,
             clock=self._clock,
         )
+        await self.store.expire()
         self.profile = profile
 
     async def close(self) -> None:
@@ -149,10 +151,29 @@ class SnapshotService:
                 raise SnapshotBusyError("snapshot backend busy")
             self._busy = True
         try:
+            await self.store.expire()
             yield self.profile, self.store
+        except BaseException:
+            await self._rollback(self.store, self._pending_ids)
+            raise
         finally:
+            self._pending_ids = []
             async with self._guard:
                 self._busy = False
+
+    async def _rollback(self, store: SnapshotStore, ids: list[str]) -> None:
+        """Reclaim worker IDs whose request did not publish a complete result."""
+        for snapshot_id in reversed(ids):
+            try:
+                await store.delete(snapshot_id)
+            except SnapshotUnavailableError:
+                # A timed-out transport already reaped its worker.
+                continue
+            except Exception:
+                # Unregistered IDs are still held by a healthy native worker.
+                # Do not mask the request's original failure during rollback.
+                with contextlib.suppress(Exception):
+                    await self._backend.drop(snapshot_id)
 
     # -- create ------------------------------------------------------------
 
@@ -172,46 +193,54 @@ class SnapshotService:
             )
             wants_30 = 30 in request.checkpoints
             labels = compiled.labels if (wants_30 and compiled.labels) else None
-            result = await self._backend.create(
-                messages=compiled.messages,
-                answer_prefix=compiled.answer_prefix,
-                freeze=freeze,
-                checkpoints=checkpoints,
-                labels=labels,
-                top_logits=0,
-                timeout=self._request_timeout,
-            )
-            returned = {row.snapshot_id for row in result.snapshots}
-            if returned != requested_ids:
-                raise SnapshotProtocolError("worker returned unexpected snapshot ids")
-            rows: list[SnapshotRow] = []
-            for row in sorted(result.snapshots, key=lambda item: item.completed_blocks):
-                record = await store.register(
-                    snapshot_id=row.snapshot_id,
-                    owner=owner,
-                    completed_blocks=row.completed_blocks,
-                    boundary=compiled.boundary,
-                    parent=row.parent,
-                    context_parent=None,
+            try:
+                result = await self._backend.create(
                     messages=compiled.messages,
                     answer_prefix=compiled.answer_prefix,
-                    tokens=row.tokens,
-                    host_bytes=_row_bytes(row),
-                    persistence=request.persistence,
-                    prompt_sha256=result.prompt_sha256,
-                    ttl_seconds=request.ttl_seconds,
+                    freeze=freeze,
+                    checkpoints=checkpoints,
+                    labels=labels,
+                    top_logits=0,
+                    timeout=self._request_timeout,
                 )
-                rows.append(
-                    SnapshotRow(
-                        id=record.id,
-                        completed_blocks=record.completed_blocks,
-                        boundary=record.boundary,
-                        parent=record.parent,
-                        context_parent=record.context_parent,
-                        capabilities=record.capabilities(),  # type: ignore[arg-type]
+                returned = {row.snapshot_id for row in result.snapshots}
+                if returned != requested_ids:
+                    raise SnapshotProtocolError(
+                        "worker returned unexpected snapshot ids"
                     )
-                )
-            return SnapshotCreateResponse(snapshots=rows)
+                rows: list[SnapshotRow] = []
+                for row in sorted(
+                    result.snapshots, key=lambda item: item.completed_blocks
+                ):
+                    record = await store.register(
+                        snapshot_id=row.snapshot_id,
+                        owner=owner,
+                        completed_blocks=row.completed_blocks,
+                        boundary=compiled.boundary,
+                        parent=row.parent,
+                        context_parent=None,
+                        messages=compiled.messages,
+                        answer_prefix=compiled.answer_prefix,
+                        tokens=row.tokens,
+                        host_bytes=_row_bytes(row),
+                        persistence=request.persistence,
+                        prompt_sha256=result.prompt_sha256,
+                        ttl_seconds=request.ttl_seconds,
+                    )
+                    rows.append(
+                        SnapshotRow(
+                            id=record.id,
+                            completed_blocks=record.completed_blocks,
+                            boundary=record.boundary,
+                            parent=record.parent,
+                            context_parent=record.context_parent,
+                            capabilities=record.capabilities(),  # type: ignore[arg-type]
+                        )
+                    )
+                return SnapshotCreateResponse(snapshots=rows)
+            except BaseException:
+                await self._rollback(store, list(checkpoints.values()))
+                raise
 
     # -- planning ----------------------------------------------------------
 
@@ -226,30 +255,34 @@ class SnapshotService:
         with store.lease(record.id):
             await store.restore(record.id)
             new_id = new_snapshot_id()
-            promoted = await self._backend.promote(
-                snapshot_id=record.id,
-                new_id=new_id,
-                timeout=self._request_timeout,
-            )
-            if promoted.snapshot.snapshot_id != new_id:
-                raise SnapshotProtocolError("promotion returned an unexpected id")
-            await store.register(
-                snapshot_id=promoted.snapshot.snapshot_id,
-                owner=record.owner,
-                completed_blocks=30,
-                boundary=record.boundary,
-                parent=record.id,
-                context_parent=(
-                    record.context_parent if record.boundary == "readout" else None
-                ),
-                messages=record.messages,
-                answer_prefix=record.answer_prefix,
-                tokens=promoted.snapshot.tokens,
-                host_bytes=_row_bytes(promoted.snapshot),
-                persistence=persistence,
-                prompt_sha256=promoted.snapshot.prompt_sha256,
-                ttl_seconds=self._default_ttl,
-            )
+            try:
+                promoted = await self._backend.promote(
+                    snapshot_id=record.id,
+                    new_id=new_id,
+                    timeout=self._request_timeout,
+                )
+                if promoted.snapshot.snapshot_id != new_id:
+                    raise SnapshotProtocolError("promotion returned an unexpected id")
+                await store.register(
+                    snapshot_id=promoted.snapshot.snapshot_id,
+                    owner=record.owner,
+                    completed_blocks=30,
+                    boundary=record.boundary,
+                    parent=record.id,
+                    context_parent=(
+                        record.context_parent if record.boundary == "readout" else None
+                    ),
+                    messages=record.messages,
+                    answer_prefix=record.answer_prefix,
+                    tokens=promoted.snapshot.tokens,
+                    host_bytes=_row_bytes(promoted.snapshot),
+                    persistence=persistence,
+                    prompt_sha256=promoted.snapshot.prompt_sha256,
+                    ttl_seconds=self._default_ttl,
+                )
+            except BaseException:
+                await self._rollback(store, [new_id])
+                raise
         store.memoize_promotion(record.id, promoted.snapshot.snapshot_id)
         return promoted.snapshot.snapshot_id, "performed", promoted.timing_ms.total
 
@@ -361,6 +394,7 @@ class SnapshotService:
                 question_id: (new_snapshot_id() if keep else None)
                 for question_id in request.questions
             }
+            self._pending_ids = [value for value in saves.values() if value is not None]
             with store.lease(plan.effective_parent):
                 parent = await store.restore(plan.effective_parent)
                 payloads = [
@@ -454,6 +488,7 @@ class SnapshotService:
                     plan.messages, plan.answer_prefix, request.prompt
                 )
             save_id = new_snapshot_id() if request.save_result_snapshot else None
+            self._pending_ids = [save_id] if save_id is not None else []
             with store.lease(plan.effective_parent):
                 parent = await store.restore(plan.effective_parent)
                 state = await self._backend.state_eval(

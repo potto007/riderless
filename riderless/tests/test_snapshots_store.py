@@ -128,6 +128,29 @@ async def test_ttl_expiry_forgets_an_idle_snapshot(tmp_path: Path) -> None:
 
     snapshot_id = await _register(store, host_bytes=10, ttl_seconds=60)
     clock.now += 61
+    await store.expire()
+    with pytest.raises(SnapshotNotFound):
+        store.get(snapshot_id)
+    assert snapshot_id in native.dropped
+    assert store.resident_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_ttl_expiry_removes_a_durable_snapshot(tmp_path: Path) -> None:
+    native = FakeNativeIO()
+    clock = Clock()
+    store = _store(tmp_path, native, host_bytes=100, clock=clock)
+    snapshot_id = await _register(
+        store, host_bytes=60, persistence="disk", ttl_seconds=1
+    )
+    directory = tmp_path / "snapshots" / snapshot_id
+    assert directory.is_dir()
+
+    clock.now += 2
+    await store.expire()
+
+    assert not directory.exists()
+    assert snapshot_id in native.dropped
     with pytest.raises(SnapshotNotFound):
         store.get(snapshot_id)
 
@@ -167,6 +190,70 @@ async def test_disk_budget_persists_instead_of_dropping(tmp_path: Path) -> None:
     restored = await store.restore(first)
     assert restored.resident is True
     assert first in native.loaded
+
+
+@pytest.mark.asyncio
+async def test_disk_snapshot_is_available_after_store_restarts(tmp_path: Path) -> None:
+    native = FakeNativeIO()
+    clock = Clock()
+    store = _store(tmp_path, native, host_bytes=100, clock=clock)
+    snapshot_id = await _register(store, host_bytes=60, persistence="disk")
+    assert (tmp_path / "snapshots" / snapshot_id / MANIFEST_NAME).is_file()
+
+    replacement = _store(tmp_path, native, host_bytes=100, clock=clock)
+    record = replacement.get(snapshot_id)
+    assert record.resident is False
+    assert record.messages == [{"role": "user", "content": "x"}]
+    assert (await replacement.restore(snapshot_id)).resident is True
+
+
+@pytest.mark.asyncio
+async def test_durable_state_and_manifest_are_private(tmp_path: Path) -> None:
+    store = _store(tmp_path, FakeNativeIO(), host_bytes=100, clock=Clock())
+    snapshot_id = await _register(store, host_bytes=60, persistence="disk")
+    directory = tmp_path / "snapshots" / snapshot_id
+    manifest = directory / MANIFEST_NAME
+
+    assert directory.stat().st_mode & 0o077 == 0
+    assert manifest.stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.asyncio
+async def test_restored_child_counts_its_new_lower_cache(tmp_path: Path) -> None:
+    native = FakeNativeIO()
+    store = _store(tmp_path, native, host_bytes=100, clock=Clock())
+    parent = await _register(
+        store, host_bytes=50, persistence="disk", completed_blocks=18
+    )
+    child = await _register(store, host_bytes=20, persistence="disk", parent=parent)
+    await _register(store, host_bytes=40)
+    assert not store.get(child).resident
+
+    with store.lease(child):
+        await store.restore(child)
+
+    assert store.resident_bytes <= 100
+    assert store.get(parent).resident
+    assert store.get(child).host_bytes > 20
+
+
+@pytest.mark.asyncio
+async def test_disk_parent_can_spill_after_its_shared_child_spills(
+    tmp_path: Path,
+) -> None:
+    native = FakeNativeIO()
+    store = _store(tmp_path, native, host_bytes=100, clock=Clock())
+    parent = await _register(
+        store, host_bytes=50, persistence="disk", completed_blocks=18
+    )
+    child = await _register(store, host_bytes=20, persistence="disk", parent=parent)
+    third = await _register(store, host_bytes=40)
+    assert not store.get(child).resident
+
+    with store.lease(third):
+        await _register(store, host_bytes=50)
+
+    assert not store.get(parent).resident
 
 
 @pytest.mark.asyncio
@@ -260,11 +347,11 @@ async def test_publish_refuses_an_unsafe_native_file_name(tmp_path: Path) -> Non
     native.bad_name = True
     store = _store(tmp_path, native, host_bytes=100, clock=Clock())
 
-    await _register(store, host_bytes=60, persistence="disk")
     with pytest.raises(IntegrityError):
-        # The second register forces a persist of the first, which rejects the
-        # traversal file name and never leaves a half-published directory.
+        # Disk persistence publishes on registration and never leaves a
+        # half-published directory when the worker supplies an unsafe name.
         await _register(store, host_bytes=60, persistence="disk")
+    assert list((tmp_path / "snapshots").iterdir()) == []
 
 
 @pytest.mark.asyncio

@@ -7,9 +7,11 @@ failure, and typed worker errors that leave the child running.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -175,6 +177,49 @@ async def test_handshake_returns_the_profile(tmp_path: Path) -> None:
     assert profile.protocol == "riderless-snapshot-v1"
     assert profile.profile == "split18-30-v1"
     assert profile.n_layer == 30 and profile.split_block == 18
+
+
+@pytest.mark.asyncio
+async def test_request_deadline_covers_a_worker_that_stops_reading_stdin(
+    tmp_path: Path,
+) -> None:
+    worker, model, manifest = _install(tmp_path)
+    worker.write_text(
+        WORKER_SOURCE.replace(
+            "for line in sys.stdin:",
+            "while True: time.sleep(60)\nfor line in sys.stdin:",
+        )
+    )
+    installed = json.loads(manifest.read_text())
+    installed["executable_sha256"] = _digest(worker)
+    manifest.write_text(json.dumps(installed))
+    backend = SnapshotNativeBackend(
+        worker_path=worker,
+        model_path=model,
+        manifest_path=manifest,
+        default_timeout=0.1,
+        startup_timeout=2.0,
+    )
+    await backend.start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                backend.create(
+                    messages=[{"role": "user", "content": "x" * (512 * 1024)}],
+                    answer_prefix="",
+                    freeze={"kind": "readout"},
+                    checkpoints={"30": "snap_" + "1" * 32},
+                    labels=None,
+                    top_logits=0,
+                    timeout=0.1,
+                ),
+                timeout=0.6,
+            )
+        assert time.monotonic() - started < 0.5
+        assert backend.ready is False
+    finally:
+        await backend.close()
 
 
 @pytest.mark.asyncio

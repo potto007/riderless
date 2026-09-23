@@ -438,9 +438,10 @@ class SnapshotNativeBackend:
                 await self._invalidate()
                 raise SnapshotUnavailableError("snapshot child stdin is closed")
             try:
-                process.stdin.write(encoded)
-                await process.stdin.drain()
-                raw = await asyncio.wait_for(self._read_json_line(), timeout=deadline)
+                async with asyncio.timeout(deadline):
+                    process.stdin.write(encoded)
+                    await process.stdin.drain()
+                    raw = await self._read_json_line()
                 if raw.get("id") != correlation_id:
                     raise SnapshotProtocolError("snapshot correlation id differs")
                 if raw.get("type") == "error":

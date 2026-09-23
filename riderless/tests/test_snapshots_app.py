@@ -536,6 +536,69 @@ async def test_create_returns_two_context_snapshots(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_pair_creation_fails_cleanly_when_budget_cannot_hold_parent(
+    tmp_path: Path,
+) -> None:
+    backend = FakeSnapshotBackend()
+    app = create_app(
+        ApiConfig(
+            snapshots_enabled=True,
+            v1_enabled=False,
+            snapshot_store_dir=tmp_path / "snap",
+            snapshot_host_bytes=80,
+        ),
+        snapshot_backend_factory=lambda _: backend,
+    )
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client,
+    ):
+        response = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+
+    assert response.status_code == 507
+    assert app.state.snapshots.store._records == {}
+    assert backend._resident == set()
+
+
+@pytest.mark.asyncio
+async def test_rejected_saved_children_do_not_accumulate_in_worker(
+    tmp_path: Path,
+) -> None:
+    backend = FakeSnapshotBackend()
+    app = create_app(
+        ApiConfig(
+            snapshots_enabled=True,
+            v1_enabled=False,
+            snapshot_store_dir=tmp_path / "snap",
+            snapshot_host_bytes=100,
+        ),
+        snapshot_backend_factory=lambda _: backend,
+    )
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client,
+    ):
+        created = await client.post(
+            "/v2/snapshots", json=CONTEXT_BODY | {"checkpoints": [30]}
+        )
+        assert created.status_code == 200
+        snapshot_id = created.json()["snapshots"][0]["id"]
+        for _ in range(2):
+            rejected = await client.post(
+                "/v2/decisions",
+                json=_decision(snapshot_id, save_result_snapshot=True),
+            )
+            assert rejected.status_code == 507
+
+    assert backend._resident == {snapshot_id}
+    assert set(app.state.snapshots.store._records) == {snapshot_id}
+
+
+@pytest.mark.asyncio
 async def test_decide_promotes_once_and_reuses(tmp_path: Path) -> None:
     backend = FakeSnapshotBackend()
     async with client_for(backend, tmp_path) as client:

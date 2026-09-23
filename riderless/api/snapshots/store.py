@@ -36,7 +36,7 @@ from riderless.api.snapshots.schema import (
     WorkerFileEntry,
 )
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 MANIFEST_NAME = "manifest.json"
 # A snapshot id is opaque and must be safe to use as a single path component.
 _ID_PATTERN = re.compile(r"^snap_[0-9a-f]{32}$")
@@ -97,6 +97,7 @@ class SnapshotRecord:
     leases: int = 0
     refcount: int = 0
     last_used: int = 0
+    persisted_host_bytes: int = 0
 
     def capabilities(self) -> list[str]:
         caps = ["continue", "inspect"]
@@ -134,6 +135,7 @@ class SnapshotStore:
         self._resident_bytes = 0
         self._tick = 0
         self._root.mkdir(parents=True, exist_ok=True)
+        self._load_disk_index()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -144,14 +146,29 @@ class SnapshotStore:
         self._tick += 1
         return self._tick
 
-    def _expire_all(self) -> None:
+    async def expire(self) -> None:
+        """Reclaim expired leaves, then parents whose last child was reclaimed."""
         now = self._now()
-        for snapshot_id in list(self._records):
-            record = self._records.get(snapshot_id)
-            if record is None or record.leases > 0:
-                continue
-            if record.expires_at <= now and record.refcount == 0:
-                self._forget(record)
+        while True:
+            expired = next(
+                (
+                    record
+                    for record in self._records.values()
+                    if record.expires_at <= now
+                    and record.leases == 0
+                    and record.refcount == 0
+                ),
+                None,
+            )
+            if expired is None:
+                return
+            record = expired
+            if record.resident:
+                with contextlib.suppress(SnapshotNotFound):
+                    await self._native.drop(record.id)
+            if record.disk_dir is not None:
+                _remove_tree(record.disk_dir)
+            self._forget(record)
 
     def _forget(self, record: SnapshotRecord) -> None:
         if record.resident:
@@ -186,6 +203,7 @@ class SnapshotStore:
         prompt_sha256: str,
         ttl_seconds: int,
     ) -> SnapshotRecord:
+        await self.expire()
         if not _valid_id(snapshot_id):
             raise IntegrityError("snapshot id is not a safe opaque reference")
         if snapshot_id in self._records:
@@ -193,32 +211,44 @@ class SnapshotStore:
         for reference in (parent, context_parent):
             if reference is not None and reference not in self._records:
                 raise SnapshotNotFound("referenced parent snapshot is unknown")
-        await self._enforce_budget(host_bytes)
-        now = self._now()
-        record = SnapshotRecord(
-            id=snapshot_id,
-            owner=owner,
-            completed_blocks=completed_blocks,
-            boundary=boundary,
-            parent=parent,
-            context_parent=context_parent,
-            messages=messages,
-            answer_prefix=answer_prefix,
-            tokens=tokens,
-            host_bytes=host_bytes,
-            persistence=persistence,
-            prompt_sha256=prompt_sha256,
-            created_at=now,
-            expires_at=now + ttl_seconds,
-            last_used=self._next_tick(),
-        )
-        self._records[snapshot_id] = record
-        self._resident_bytes += host_bytes
-        if parent is not None:
-            self._records[parent].refcount += 1
-        if context_parent is not None and context_parent != parent:
-            self._records[context_parent].refcount += 1
-        return record
+        # A new child has no refcount yet. Pin its parents while the budget
+        # manager chooses victims, then publish the new reference.
+        with self.lease(
+            *(reference for reference in (parent, context_parent) if reference)
+        ):
+            await self._enforce_budget(host_bytes)
+            now = self._now()
+            record = SnapshotRecord(
+                id=snapshot_id,
+                owner=owner,
+                completed_blocks=completed_blocks,
+                boundary=boundary,
+                parent=parent,
+                context_parent=context_parent,
+                messages=messages,
+                answer_prefix=answer_prefix,
+                tokens=tokens,
+                host_bytes=host_bytes,
+                persistence=persistence,
+                prompt_sha256=prompt_sha256,
+                created_at=now,
+                expires_at=now + ttl_seconds,
+                last_used=self._next_tick(),
+                persisted_host_bytes=host_bytes,
+            )
+            self._records[snapshot_id] = record
+            self._resident_bytes += host_bytes
+            if parent is not None:
+                self._records[parent].refcount += 1
+            if context_parent is not None and context_parent != parent:
+                self._records[context_parent].refcount += 1
+            try:
+                if persistence == "disk":
+                    await self._persist(record)
+            except BaseException:
+                self._forget(record)
+                raise
+            return record
 
     def memoize_promotion(self, parent_id: str, child_id: str) -> None:
         parent = self.get(parent_id)
@@ -235,9 +265,10 @@ class SnapshotStore:
     # -- access ------------------------------------------------------------
 
     def get(self, snapshot_id: str) -> SnapshotRecord:
-        self._expire_all()
         record = self._records.get(snapshot_id)
-        if record is None:
+        if record is None or (
+            record.expires_at <= self._now() and record.refcount == 0
+        ):
             raise SnapshotNotFound(f"snapshot {snapshot_id!r} is unknown or expired")
         record.last_used = self._next_tick()
         return record
@@ -310,7 +341,7 @@ class SnapshotStore:
     async def _enforce_budget(self, incoming_bytes: int) -> None:
         if incoming_bytes > self._host_bytes:
             raise SnapshotStoreFull("snapshot exceeds the whole host budget")
-        self._expire_all()
+        await self.expire()
         while self._resident_bytes + incoming_bytes > self._host_bytes:
             if not await self._evict_one():
                 raise SnapshotStoreFull("host byte budget is exhausted")
@@ -319,16 +350,24 @@ class SnapshotStore:
         candidates = [
             record
             for record in self._records.values()
-            if record.resident and record.leases == 0
+            if record.resident
+            and record.leases == 0
+            and (
+                record.refcount == 0
+                or (
+                    record.persistence == "disk"
+                    and not self._has_resident_shared_child(record)
+                )
+            )
         ]
         candidates.sort(key=lambda record: record.last_used)
         for record in candidates:
             if record.persistence == "disk":
                 await self._persist(record)
-                self._resident_bytes -= record.host_bytes
-                record.resident = False
                 with contextlib.suppress(SnapshotNotFound):
                     await self._native.drop(record.id)
+                self._resident_bytes -= record.host_bytes
+                record.resident = False
                 return True
             # A memory-only snapshot is simply dropped, but never while a child
             # still references its cache.
@@ -337,6 +376,15 @@ class SnapshotStore:
                 self._forget(record)
                 return True
         return False
+
+    def _has_resident_shared_child(self, parent: SnapshotRecord) -> bool:
+        return parent.completed_blocks == 18 and any(
+            child.parent == parent.id
+            and child.completed_blocks == 30
+            and child.tokens == parent.tokens
+            and child.resident
+            for child in self._records.values()
+        )
 
     # -- disk publish and restore -----------------------------------------
 
@@ -351,6 +399,12 @@ class SnapshotStore:
         return {
             "schema_version": MANIFEST_SCHEMA_VERSION,
             "snapshot_id": record.id,
+            "owner": record.owner,
+            "created_at": record.created_at,
+            "messages": record.messages,
+            "answer_prefix": record.answer_prefix,
+            "host_bytes": record.persisted_host_bytes,
+            "persistence": record.persistence,
             "model_sha256": self._model_sha256,
             "runtime_sha256": self._runtime_sha256,
             "profile": self._profile,
@@ -364,7 +418,6 @@ class SnapshotStore:
             "prompt_sha256": record.prompt_sha256,
             "parent": record.parent,
             "context_parent": record.context_parent,
-            "owner": record.owner,
             "expires_at": record.expires_at,
             "files": {
                 name: {"bytes": entry.bytes, "sha256": entry.sha256}
@@ -378,22 +431,29 @@ class SnapshotStore:
         final = self._disk_dir(record.id)
         os.makedirs(self._root, exist_ok=True)
         tmp = Path(f"{final}.tmp-{uuid.uuid4().hex}")
-        tmp.mkdir()
+        tmp.mkdir(mode=0o700)
+        published = False
         try:
             files = await self._native.save(record.id, tmp)
             _check_file_names(files)
             manifest = self._manifest(record, files)
             manifest_path = tmp / MANIFEST_NAME
-            manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+            descriptor = os.open(
+                manifest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(manifest, sort_keys=True) + "\n")
             _fsync_tree(tmp)
             os.replace(tmp, final)
+            published = True
             _fsync_dir(self._root)
+            reopened = self._read_manifest(final)
+            self._validate_manifest(reopened, record)
         except BaseException:
             _remove_tree(tmp)
+            if published:
+                _remove_tree(final)
             raise
-        # Reopen and validate before the snapshot is declared durable.
-        reopened = self._read_manifest(final)
-        self._validate_manifest(reopened, record)
         record.disk_dir = final
         record.durable_files = files
 
@@ -412,6 +472,23 @@ class SnapshotStore:
     ) -> None:
         if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
             raise IntegrityError("snapshot manifest schema is unsupported")
+        for key, expected in (
+            ("snapshot_id", record.id),
+            ("owner", record.owner),
+            ("boundary", record.boundary),
+            ("parent", record.parent),
+            ("context_parent", record.context_parent),
+            ("messages", record.messages),
+            ("answer_prefix", record.answer_prefix),
+            ("host_bytes", record.persisted_host_bytes),
+            ("persistence", record.persistence),
+            ("created_at", record.created_at),
+            ("expires_at", record.expires_at),
+            ("prompt_sha256", record.prompt_sha256),
+            ("tokens", record.tokens),
+        ):
+            if manifest.get(key) != expected:
+                raise IntegrityError(f"snapshot {key} differs from its record")
         if manifest.get("model_sha256") != self._model_sha256:
             raise IntegrityError("snapshot was captured under another model")
         if manifest.get("runtime_sha256") != self._runtime_sha256:
@@ -444,6 +521,83 @@ class SnapshotStore:
             ):
                 raise IntegrityError("snapshot file checksum is malformed")
 
+    def _load_disk_index(self) -> None:
+        """Rebuild the process-local index from published disk snapshots."""
+        for directory in sorted(self._root.iterdir()):
+            if not directory.is_dir() or not _valid_id(directory.name):
+                continue
+            manifest = self._read_manifest(directory)
+            if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+                raise IntegrityError("snapshot manifest schema is unsupported")
+            messages = manifest.get("messages")
+            if (
+                not isinstance(messages, list)
+                or not messages
+                or any(
+                    not isinstance(message, dict)
+                    or set(message) != {"role", "content"}
+                    or message["role"] not in {"user", "assistant"}
+                    or not isinstance(message["content"], str)
+                    for message in messages
+                )
+            ):
+                raise IntegrityError("snapshot messages are malformed")
+            owner = manifest.get("owner")
+            answer_prefix = manifest.get("answer_prefix")
+            host_bytes = manifest.get("host_bytes")
+            created_at = manifest.get("created_at")
+            expires_at = manifest.get("expires_at")
+            if (
+                not isinstance(owner, str)
+                or not owner
+                or not isinstance(answer_prefix, str)
+                or not isinstance(host_bytes, int)
+                or host_bytes <= 0
+                or not isinstance(created_at, (int, float))
+                or not isinstance(expires_at, (int, float))
+            ):
+                raise IntegrityError("snapshot metadata is malformed")
+            try:
+                files = {
+                    name: WorkerFileEntry.model_validate(entry)
+                    for name, entry in manifest["files"].items()
+                }
+                record = SnapshotRecord(
+                    id=directory.name,
+                    owner=owner,
+                    completed_blocks=manifest["completed_blocks"],
+                    boundary=manifest["boundary"],
+                    parent=manifest["parent"],
+                    context_parent=manifest["context_parent"],
+                    messages=messages,
+                    answer_prefix=answer_prefix,
+                    tokens=manifest["tokens"],
+                    host_bytes=host_bytes,
+                    persistence="disk",
+                    prompt_sha256=manifest["prompt_sha256"],
+                    created_at=float(created_at),
+                    expires_at=float(expires_at),
+                    resident=False,
+                    disk_dir=directory,
+                    durable_files=files,
+                    last_used=self._next_tick(),
+                    persisted_host_bytes=host_bytes,
+                )
+            except (KeyError, AttributeError, TypeError, ValueError) as error:
+                raise IntegrityError("snapshot manifest is malformed") from error
+            self._validate_manifest(manifest, record)
+            self._records[record.id] = record
+        for record in self._records.values():
+            for reference in {
+                value
+                for value in (record.parent, record.context_parent)
+                if value is not None
+            }:
+                parent = self._records.get(reference)
+                if parent is None:
+                    raise IntegrityError("snapshot parent is missing from disk")
+                parent.refcount += 1
+
     async def restore(self, snapshot_id: str) -> SnapshotRecord:
         """Bring a snapshot back to resident, restoring from disk if needed."""
         record = self.get(snapshot_id)
@@ -453,11 +607,23 @@ class SnapshotStore:
             raise SnapshotNotFound("snapshot has no resident or durable copy")
         manifest = self._read_manifest(record.disk_dir)
         self._validate_manifest(manifest, record)
-        await self._enforce_budget(record.host_bytes)
+        # A paired S30 originally shares its parent's lower K/V and charges it
+        # there. Native load reconstructs a separate blob. Reserve every saved
+        # tensor byte before loading, including that newly owned lower K/V.
+        loaded_bytes = max(
+            record.host_bytes,
+            sum(
+                entry.bytes
+                for name, entry in record.durable_files.items()
+                if name != "native.json"
+            ),
+        )
+        await self._enforce_budget(loaded_bytes)
         checksums = {name: entry.sha256 for name, entry in record.durable_files.items()}
         await self._native.load(snapshot_id, record.disk_dir, checksums)
         record.resident = True
-        self._resident_bytes += record.host_bytes
+        record.host_bytes = loaded_bytes
+        self._resident_bytes += loaded_bytes
         record.last_used = self._next_tick()
         return record
 

@@ -338,6 +338,12 @@ Publish using a temporary directory, flush/checksums, then an atomic rename.
 Reopen and validate a snapshot before declaring it durable. Bounds-check all
 lengths and tensor dimensions before calling a native loader. Initial API
 supports service-created snapshots only; external binary imports are excluded.
+For `persistence: "disk"`, publish before a successful API response and rebuild
+the snapshot index on service startup. The store manifest must include the
+messages and answer prefix needed to compile future branches, as well as their
+original owner and expiry. The snapshot directory and manifest are owner-only
+because they contain the supplied state as readable text. Store manifest schema
+2 adds these fields; schema 1 disk artifacts cannot be resumed by the API.
 
 GPU-resident parents use sequence branching only within a compatible context;
 `llama_memory_seq_cp` is a candidate, subject to the split-context tests. Pin
