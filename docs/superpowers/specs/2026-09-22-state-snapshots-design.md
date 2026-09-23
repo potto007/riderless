@@ -478,7 +478,7 @@ of the split runtime remain subsequent work.
 - [Transformer cache explanation](https://huggingface.co/docs/transformers/cache_explanation)
   describes the per-layer context required when processing appended tokens.
 - Earlier local-ai evidence:
-  `/home/potto/src/local-ai/docs/research/activation-probe-early-exit-results.md`,
+  the separate local-ai repository's `docs/research/activation-probe-early-exit-results.md`,
   `activation-probe-poc-results.md`, and
   `intermediate-state-control-assessment.md` in the same directory; runtime
-  experiment at `/home/potto/src/local-ai/systemone/probes/early_build.py`.
+  experiment at `systemone/probes/early_build.py` in that repository.
