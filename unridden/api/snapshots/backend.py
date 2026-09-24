@@ -47,6 +47,7 @@ from unridden.api.snapshots.schema import (
     WorkerDropped,
     WorkerErrorMessage,
     WorkerFileEntry,
+    WorkerGenerated,
     WorkerHello,
     WorkerInspect,
     WorkerLoaded,
@@ -132,6 +133,17 @@ class SnapshotBackend(Protocol):
         save_as: str | None,
         timeout: float,
     ) -> WorkerState: ...
+
+    async def generate(
+        self,
+        *,
+        snapshot_id: str,
+        messages: list[dict[str, str]],
+        answer_prefix: str,
+        max_tokens: int,
+        top_logits: int,
+        timeout: float,
+    ) -> WorkerGenerated: ...
 
     async def inspect(self, *, snapshot_id: str, timeout: float) -> WorkerInspect: ...
 
@@ -552,6 +564,30 @@ class SnapshotNativeBackend:
             timeout=timeout,
         )
         return await self._validated(WorkerState, raw)
+
+    async def generate(
+        self,
+        *,
+        snapshot_id: str,
+        messages: list[dict[str, str]],
+        answer_prefix: str,
+        max_tokens: int,
+        top_logits: int,
+        timeout: float | None = None,
+    ) -> WorkerGenerated:
+        raw = await self._request(
+            {
+                "type": "generate",
+                "mode": "snapshot",
+                "snapshot_id": snapshot_id,
+                "messages": messages,
+                "answer_prefix": answer_prefix,
+                "max_tokens": max_tokens,
+                "top_logits": top_logits,
+            },
+            timeout=timeout,
+        )
+        return await self._validated(WorkerGenerated, raw)
 
     async def inspect(
         self, *, snapshot_id: str, timeout: float | None = None

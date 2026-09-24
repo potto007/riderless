@@ -39,6 +39,10 @@ from unridden.api.snapshots.mapping import map_answer
 from unridden.api.snapshots.schema import (
     SNAPSHOT_PROFILE,
     BlockTokens,
+    OutputRequest,
+    OutputResponse,
+    OutputTiming,
+    OutputUsage,
     Persistence,
     Promotion,
     SnapshotCreateRequest,
@@ -540,6 +544,69 @@ class SnapshotService:
                 top_logits=state.top_logits,
                 child=child_id,
                 usage=Usage(input_tokens=state.suffix_tokens),
+            )
+
+    async def output(self, request: OutputRequest) -> OutputResponse:
+        """Generate text from a snapshot without recomputing its prefix.
+
+        The prompt branches off the snapshot exactly as a state evaluation
+        does; the worker then decodes greedily through both layer ranges and
+        trims back to the parent, so the snapshot stays immutable.
+        """
+        async with self._serialized() as (profile, store):
+            if not profile.output_mode:
+                raise CapabilityUnavailable("the snapshot worker has no output mode")
+            plan = await self._plan(store, request.snapshot)
+            if plan.mode == "context":
+                branch = compile_context_prompt(plan.messages, request.prompt)
+            else:
+                branch = compile_readout_prompt(
+                    plan.messages, plan.answer_prefix, request.prompt
+                )
+            with store.lease(plan.effective_parent):
+                parent = await store.restore(plan.effective_parent)
+                result = await self._backend.generate(
+                    snapshot_id=plan.effective_parent,
+                    messages=branch.messages,
+                    answer_prefix=branch.answer_prefix,
+                    max_tokens=request.max_tokens,
+                    top_logits=request.top_logits,
+                    timeout=self._request_timeout,
+                )
+            if result.mode != "snapshot" or result.reused_tokens != parent.tokens:
+                raise SnapshotProtocolError("worker did not continue the snapshot")
+            if len(result.steps) not in (
+                0,
+                len(result.token_ids),
+                len(result.token_ids) + 1,
+            ):
+                raise SnapshotProtocolError(
+                    "worker step trace does not match its output"
+                )
+            blocks = result.block_tokens
+            return OutputResponse(
+                model=MODEL_ID,  # type: ignore[arg-type]
+                text=result.text,
+                token_ids=result.token_ids,
+                stop_reason=result.stop_reason,
+                suffix_tokens=result.prefilled_tokens,
+                block_tokens=BlockTokens(
+                    lower=blocks.get("lower", 0), upper=blocks.get("upper", 0)
+                ),
+                reused_prefix_tokens=result.reused_tokens,
+                restored_bytes=result.restored_bytes,
+                timing=OutputTiming(
+                    restore_ms=result.timing_ms.restore,
+                    promotion_ms=plan.promotion_ms,
+                    time_to_first_token_ms=result.timing_ms.time_to_first_token,
+                    decode_ms=result.timing_ms.decode,
+                ),
+                decode_tokens_per_second=result.decode_tokens_per_second,
+                steps=result.steps,
+                usage=OutputUsage(
+                    input_tokens=result.prefilled_tokens,
+                    output_tokens=result.generated_tokens,
+                ),
             )
 
     # -- metadata, deletion, vectors --------------------------------------

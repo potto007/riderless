@@ -27,11 +27,14 @@ from unridden.api.snapshots.schema import (
     BlockTokens,
     Boundary,
     ExportKind,
+    OutputStep,
     SnapshotBytes,
     TopLogit,
     VectorArtifact,
     WorkerCreated,
     WorkerCreateTiming,
+    WorkerGenerated,
+    WorkerGenerateTiming,
     WorkerHello,
     WorkerPromoted,
     WorkerPromoteTiming,
@@ -63,6 +66,7 @@ HELLO = WorkerHello(
     reference_context=False,
     context_prompt_version="unridden-gemma-context-v1",
     generated_tokens=0,
+    output_mode=True,
     callbacks_enabled=False,
 )
 
@@ -410,6 +414,53 @@ class FakeSnapshotBackend:
             top_logits=tops,
             child=child,
             generated_tokens=0,
+        )
+
+    async def generate(
+        self,
+        *,
+        snapshot_id: str,
+        messages: list[dict[str, str]],
+        answer_prefix: str,
+        max_tokens: int,
+        top_logits: int,
+        timeout: float | None = None,
+    ) -> WorkerGenerated:
+        content = "".join(message["content"] for message in messages) + answer_prefix
+        suffix = _tokens([m["content"] for m in messages if m["role"] == "user"][-1])
+        reused = self._snaps[snapshot_id]["tokens"]
+        token_ids = list(range(100, 100 + max_tokens))
+        steps = [
+            OutputStep(
+                token_id=token,
+                top_logits=[TopLogit(token_id=token, logit=1.0)][:top_logits],
+            )
+            for token in token_ids
+        ]
+        return WorkerGenerated(
+            type="generated",
+            id="g",
+            mode="snapshot",
+            execution_mode="split18-30",
+            text=" ".join(str(token) for token in token_ids),
+            token_ids=token_ids,
+            stop_reason="max_tokens",
+            prompt_sha256=_sha(content),
+            prompt_tokens=reused + suffix,
+            reused_tokens=reused,
+            prefilled_tokens=suffix,
+            generated_tokens=max_tokens,
+            block_tokens={
+                "lower": suffix + max_tokens - 1,
+                "upper": suffix + max_tokens - 1,
+            },
+            restore="resident",
+            restored_bytes=0,
+            timing_ms=WorkerGenerateTiming(
+                restore=0.0, time_to_first_token=1.0, decode=2.0, total=3.0
+            ),
+            decode_tokens_per_second=100.0,
+            steps=steps if top_logits else [],
         )
 
     async def inspect(self, *, snapshot_id: str, timeout: float | None = None) -> Any:
@@ -813,6 +864,41 @@ async def test_state_evaluation_returns_tagged_vectors(tmp_path: Path) -> None:
     )
     assert len(body["top_logits"]) == 3
     assert body["child"] is not None
+
+
+@pytest.mark.asyncio
+async def test_output_generates_from_a_snapshot(tmp_path: Path) -> None:
+    async with client_for(FakeSnapshotBackend(), tmp_path) as client:
+        created = (await client.post("/v2/snapshots", json=CONTEXT_BODY)).json()
+        snap30 = next(
+            r["id"] for r in created["snapshots"] if r["completed_blocks"] == 30
+        )
+        response = await client.post(
+            "/v2/outputs",
+            json={
+                "snapshot": {"id": snap30, "relationship": "followup"},
+                "prompt": "draft a reply",
+                "max_tokens": 4,
+                "top_logits": 1,
+            },
+        )
+        too_long = await client.post(
+            "/v2/outputs",
+            json={
+                "snapshot": {"id": snap30, "relationship": "followup"},
+                "prompt": "draft a reply",
+                "max_tokens": 5000,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["token_ids"] == [100, 101, 102, 103]
+    assert body["stop_reason"] == "max_tokens"
+    assert body["usage"]["output_tokens"] == 4
+    assert body["reused_prefix_tokens"] > 0
+    assert len(body["steps"]) == 4
+    assert too_long.status_code == 422
 
 
 @pytest.mark.asyncio
