@@ -419,6 +419,30 @@ public:
         llama_memory_clear(llama_get_memory(context), true);
     }
 
+    // Stock 30 blocks over tokens[begin:end), appended to the reference cache
+    // (cleared first when asked). Copies the last position's logits.
+    void reference_append(const std::vector<llama_token> & tokens, size_t begin, size_t end, bool fresh,
+                          std::vector<double> & logits) {
+        if (!reference_) throw protocol_error("capability_unavailable", "", "no reference context");
+        auto * context = reference_.get();
+        if (fresh) llama_memory_clear(llama_get_memory(context), true);
+        size_t offset = begin;
+        for (const size_t count : unridden::prefill_chunks(end - begin, static_cast<size_t>(config_.batch))) {
+            auto batch = llama_batch_get_one(const_cast<llama_token *>(tokens.data()) + offset,
+                                             static_cast<int32_t>(count));
+            if (llama_decode(context, batch) != 0) throw std::runtime_error("Reference decode failed");
+            offset += count;
+        }
+        llama_synchronize(context);
+        const float * raw = llama_get_logits_ith(context, -1);
+        if (!raw) throw std::runtime_error("Missing reference logits");
+        logits.assign(raw, raw + llama_vocab_n_tokens(vocab_));
+    }
+
+    void clear_reference() {
+        if (reference_) llama_memory_clear(llama_get_memory(reference_.get()), true);
+    }
+
     blob save_state(bool upper) {
         auto * context = upper ? upper_.get() : lower_.get();
         // Every cell, SWA-masked ones included: the restored cache then has
@@ -625,6 +649,7 @@ public:
         if (type == "save") return save(request);
         if (type == "load") return load(request);
         if (type == "reference") return reference(request);
+        if (type == "generate") return generate(request);
         throw invalid("internal", "Unknown request type");
     }
 
@@ -1371,6 +1396,152 @@ private:
         return response;
     }
 
+    // Greedy autoregressive output. "snapshot" continues a resident or
+    // restored 30 parent: the suffix and every new token run lower (0-17),
+    // hand H18 to upper (18-29) through llama_batch.embd and read the head;
+    // the parent prefix is never recomputed and the contexts are trimmed back
+    // to it afterwards. "split_prefill" runs the same split graphs from an
+    // empty cache and "reference" the stock 30-block graph; both are the
+    // comparison baselines.
+    json generate(const json & request) {
+        const std::string mode = request.at("mode").get<std::string>();
+        if (mode != "snapshot" && mode != "split_prefill" && mode != "reference") {
+            throw invalid("internal", "Unknown generate mode");
+        }
+        if (mode != "snapshot" && !runtime_.has_reference()) {
+            throw protocol_error("capability_unavailable", "", "Baseline modes need a --reference worker");
+        }
+        const int max_tokens = request.at("max_tokens").get<int>();
+        if (max_tokens < 1 || max_tokens > config_.context) throw invalid("internal", "max_tokens out of range");
+        const int k = top_k(request);
+        const rendered full = render(request.at("messages"), request.at("answer_prefix").get<std::string>());
+        const snapshot * parent = nullptr;
+        size_t reused = 0;
+        if (mode == "snapshot") {
+            parent = &find(request.at("snapshot_id").get<std::string>());
+            if (parent->completed_blocks != 30) {
+                throw protocol_error("capability_unavailable", "", "Generate needs a 30 snapshot; promote first");
+            }
+            (void) branch_suffix(*parent, full);
+            reused = parent->tokens.size();
+        }
+        if (full.tokens.size() + static_cast<size_t>(max_tokens) > static_cast<size_t>(config_.context)) {
+            throw invalid("budget", "Prompt plus max_tokens exceeds the context");
+        }
+        // Qualification only: raw f32 logits per step, for exact cross-mode diffs.
+        std::ofstream dump;
+        if (request.contains("logits_dump") && !request.at("logits_dump").is_null()) {
+            if (!runtime_.has_reference()) {
+                throw protocol_error("capability_unavailable", "", "logits_dump needs a --reference worker");
+            }
+            dump.open(request.at("logits_dump").get<std::string>(), std::ios::binary | std::ios::trunc);
+            if (!dump) throw invalid("internal", "Cannot open logits_dump");
+        }
+
+        std::vector<llama_token> sequence = full.tokens;
+        std::vector<double> vocabulary;
+        std::vector<float> last_normalized;
+        const llama_vocab * vocab = runtime_.vocab();
+        size_t restored = 0;
+        double restore_ms = 0.0;
+        size_t block_tokens = 0;
+        const auto started = steady_clock::now();
+        // One step through whatever graph the mode uses, for tokens [begin, end).
+        const auto advance = [&](size_t begin, size_t end) {
+            if (mode == "reference") {
+                runtime_.reference_append(sequence, begin, end, begin == 0, vocabulary);
+            } else {
+                const matrix h18 = runtime_.run_lower(sequence, begin, end);
+                (void) runtime_.run_upper(h18, static_cast<llama_pos>(begin), last_normalized, &vocabulary);
+            }
+            block_tokens += end - begin;
+        };
+        json steps = json::array();
+        std::vector<llama_token> output;
+        std::string stop_reason = "max_tokens";
+        double ttft_ms = 0.0;
+        double decode_ms = 0.0;
+        try {
+            if (mode == "snapshot") {
+                const auto mark = steady_clock::now();
+                restored = runtime_.make_resident(*parent);
+                restore_ms = elapsed_ms(mark);
+            } else if (mode == "split_prefill") {
+                runtime_.clear();
+            }
+            // Baselines may break the prefill where a snapshot would have, so
+            // their chunk shapes match the snapshot path exactly.
+            const size_t prefill_break = mode == "snapshot" ? 0 : request.value("prefill_break", size_t{0});
+            if (prefill_break >= sequence.size()) throw invalid("internal", "prefill_break out of range");
+            if (prefill_break > 0) advance(0, prefill_break);
+            advance(prefill_break > 0 ? prefill_break : reused, sequence.size());
+            ttft_ms = elapsed_ms(started);
+            const auto decode_started = steady_clock::now();
+            for (;;) {
+                const readout value = make_readout(vocabulary, {}, k);
+                const llama_token token = static_cast<llama_token>(value.argmax_token);
+                if (dump) {
+                    const std::vector<float> row(vocabulary.begin(), vocabulary.end());
+                    dump.write(reinterpret_cast<const char *>(row.data()),
+                               static_cast<std::streamsize>(row.size() * sizeof(float)));
+                }
+                if (k > 0) steps.push_back({{"token_id", token}, {"top_logits", top_json(value)}});
+                if (llama_vocab_is_eog(vocab, token)) {
+                    stop_reason = "eog";
+                    break;
+                }
+                output.push_back(token);
+                if (static_cast<int>(output.size()) == max_tokens) break;
+                sequence.push_back(token);
+                advance(sequence.size() - 1, sequence.size());
+            }
+            decode_ms = elapsed_ms(decode_started);
+            if (mode == "snapshot") runtime_.trim_to(*parent);
+            else if (mode == "split_prefill") runtime_.clear();
+            else runtime_.clear_reference();
+        } catch (const protocol_error &) {
+            throw;
+        } catch (const std::exception & error) {
+            runtime_.clear();
+            runtime_.clear_reference();
+            throw protocol_error("execution_error", "", error.what());
+        }
+        std::string text;
+        for (const llama_token token : output) {
+            char piece[256];
+            const int n = llama_token_to_piece(vocab, token, piece, sizeof(piece), 0, false);
+            if (n < 0) throw protocol_error("execution_error", "", "Token piece too long");
+            text.append(piece, static_cast<size_t>(n));
+        }
+        // The first sampled token needs no extra decode; each later one does.
+        const size_t decode_steps = output.empty() ? 0 : output.size() - 1 + (stop_reason == "eog" ? 1 : 0);
+        return {
+            {"type", "generated"},
+            {"mode", mode},
+            {"execution_mode", mode == "reference" ? "stock30" : "split18-30"},
+            {"text", text},
+            {"token_ids", output},
+            {"stop_reason", stop_reason},
+            {"prompt_sha256", sha256_hex(full.prompt)},
+            {"prompt_tokens", full.tokens.size()},
+            {"reused_tokens", reused},
+            {"prefilled_tokens", full.tokens.size() - reused},
+            {"generated_tokens", output.size()},
+            {"block_tokens", mode == "reference" ? json({{"stock", block_tokens}})
+                                                 : json({{"lower", block_tokens}, {"upper", block_tokens}})},
+            {"restore", mode != "snapshot" ? json() : json(restored == 0 ? "resident" : "host")},
+            {"restored_bytes", restored},
+            {"timing_ms", {
+                {"restore", restore_ms},
+                {"time_to_first_token", ttft_ms},
+                {"decode", decode_ms},
+                {"total", elapsed_ms(started)},
+            }},
+            {"decode_tokens_per_second", decode_ms > 0 ? decode_steps * 1000.0 / decode_ms : 0.0},
+            {"steps", steps},
+        };
+    }
+
     const settings & config_;
     runtime runtime_;
     const common_chat_templates * templates_;
@@ -1467,6 +1638,7 @@ int main(int argc, char ** argv) {
             {"reference_context", config.reference},
             {"context_prompt_version", CONTEXT_PROMPT_VERSION},
             {"generated_tokens", 0},
+            {"output_mode", true},
             {"callbacks_enabled", false},
         };
         std::cout << hello.dump() << '\n' << std::flush;
