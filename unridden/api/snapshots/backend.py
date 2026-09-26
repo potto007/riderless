@@ -477,8 +477,10 @@ class SnapshotNativeBackend:
                     "snapshot response failed validation"
                 ) from error
             except (BrokenPipeError, ConnectionError) as error:
+                # The child is gone, as with a closed stdout: retryable, and the
+                # service restarts it on the next request.
                 await self._invalidate()
-                raise SnapshotExecutionError(
+                raise SnapshotUnavailableError(
                     "snapshot child transport failed"
                 ) from error
             except BaseException:

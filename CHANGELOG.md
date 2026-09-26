@@ -19,6 +19,18 @@ published measurements were taken on.
   worker gains a `ride` command. This is the one route that generates tokens;
   `/v1` and the decision routes still generate none.
 
+### Fixed
+
+- `POST /v2/snapshots` with `checkpoints: [30]` alone no longer fails with a
+  500: a 30 snapshot created without an 18 keeps H18, which the response
+  schema wrongly rejected (#30).
+- A dead snapshot worker is restarted instead of leaving `/v2` unavailable
+  until the server restarts. The next request (or `/health`, in the background)
+  restarts it, with a 10 s backoff after a failed restart; the new worker must
+  match the first. Disk snapshots are reloaded on next use and memory-only
+  snapshots answer `snapshot_not_found`. A broken pipe to the worker is now a
+  retryable 529 rather than a 500.
+
 ## 0.4.0 - 2026-09-23
 
 ### Added

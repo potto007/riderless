@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -62,6 +63,11 @@ from unridden.api.snapshots.schema import (
     WorkerTensor,
 )
 from unridden.api.snapshots.store import SnapshotRecord, SnapshotStore, new_snapshot_id
+
+LOGGER = logging.getLogger("unridden.api.snapshots.service")
+# After a failed restart, requests wait this long before spawning another worker,
+# so a worker that cannot start is not respawned on every request.
+RECOVERY_BACKOFF_SECONDS = 10.0
 
 # The export kind and the representation tag the worker must stamp on it, so a
 # raw residual is never mistaken for a post-norm head input.
@@ -118,12 +124,21 @@ class SnapshotService:
         self._guard = asyncio.Lock()
         self._busy = False
         self._pending_ids: list[str] = []
+        self._recovery_lock = asyncio.Lock()
+        self._recovery_failed_at: float | None = None
+        self._recovery_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         profile = await asyncio.wait_for(
             self._backend.start(), timeout=self._startup_timeout
         )
-        self.store = SnapshotStore(
+        store = self._new_store(profile)
+        await store.expire()
+        self.store = store
+        self.profile = profile
+
+    def _new_store(self, profile: WorkerHello) -> SnapshotStore:
+        return SnapshotStore(
             root=Path(self._store_root),
             native=self._backend,
             model_sha256=profile.model_sha256,
@@ -134,10 +149,78 @@ class SnapshotService:
             host_bytes=self._host_bytes,
             clock=self._clock,
         )
-        await self.store.expire()
-        self.profile = profile
+
+    async def recover(self) -> None:
+        """Restart a worker that died, keeping only what survives on disk.
+
+        A protocol or transport failure reaps the worker, and every resident
+        snapshot goes with it. The store is rebuilt from the disk index, so a
+        disk snapshot is reloaded on its next use and a memory-only snapshot
+        answers `snapshot_not_found` instead of pointing at a dead process.
+        """
+        if self.profile is None or self._backend_ready():
+            return
+        async with self._recovery_lock:
+            # Another request may have finished the restart while this waited.
+            if self._backend_ready():
+                return
+            failed_at = self._recovery_failed_at
+            if (
+                failed_at is not None
+                and time.monotonic() - failed_at < RECOVERY_BACKOFF_SECONDS
+            ):
+                raise SnapshotUnavailableError("snapshot backend is recovering")
+            try:
+                profile = await asyncio.wait_for(
+                    self._backend.start(), timeout=self._startup_timeout
+                )
+                if profile != self.profile:
+                    # Disk snapshots were made for the first worker's model and
+                    # runtime; a different one must not serve them.
+                    await self._backend.close()
+                    raise SnapshotUnavailableError(
+                        "restarted snapshot worker differs from the first"
+                    )
+                store = self._new_store(profile)
+                await store.expire()
+            except Exception as error:
+                self._recovery_failed_at = time.monotonic()
+                LOGGER.warning("snapshot worker restart failed: %s", error)
+                raise SnapshotUnavailableError(
+                    "snapshot backend is unavailable"
+                ) from error
+            self._recovery_failed_at = None
+            self.store = store
+            LOGGER.warning("snapshot worker restarted; memory-only snapshots were lost")
+
+    def _backend_ready(self) -> bool:
+        return self._backend.ready
+
+    def schedule_recovery(self) -> None:
+        """Start recovering a dead worker in the background, if not already."""
+        if self.profile is None or self._backend.ready or self._busy:
+            return
+        if self._recovery_task is not None and not self._recovery_task.done():
+            return
+        self._recovery_task = asyncio.create_task(self._background_recovery())
+
+    async def _background_recovery(self) -> None:
+        async with self._guard:
+            if self._busy:
+                return
+            self._busy = True
+        try:
+            with contextlib.suppress(SnapshotUnavailableError):
+                await self.recover()
+        finally:
+            async with self._guard:
+                self._busy = False
 
     async def close(self) -> None:
+        if self._recovery_task is not None:
+            self._recovery_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._recovery_task
         await self._backend.close()
 
     @property
@@ -148,13 +231,15 @@ class SnapshotService:
 
     @contextlib.asynccontextmanager
     async def _serialized(self) -> AsyncIterator[tuple[WorkerHello, SnapshotStore]]:
-        if self.profile is None or self.store is None or not self._backend.ready:
+        if self.profile is None or self.store is None:
             raise SnapshotUnavailableError("snapshot backend unavailable")
         async with self._guard:
             if self._busy:
                 raise SnapshotBusyError("snapshot backend busy")
             self._busy = True
         try:
+            if not self._backend.ready:
+                await self.recover()
             await self.store.expire()
             yield self.profile, self.store
         except BaseException:
