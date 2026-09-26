@@ -390,13 +390,12 @@ class WorkerSnapshotRow(StrictModel):
     @model_validator(mode="after")
     def _coverage_matches_depth(self) -> Self:
         blob = self.bytes
-        if self.completed_blocks == 18:
-            # The upper range never ran, so its cache and H30 do not exist.
-            if blob.upper_kv != 0 or blob.h30 != 0:
-                raise ValueError("an 18 snapshot cannot hold upper-range state")
-        elif blob.h18 != 0:
-            # A 30 snapshot references its parent's H18 rather than storing it.
-            raise ValueError("a 30 snapshot must reference H18, not store it")
+        # The upper range never ran on an 18, so its cache and H30 do not exist.
+        if self.completed_blocks == 18 and (blob.upper_kv != 0 or blob.h30 != 0):
+            raise ValueError("an 18 snapshot cannot hold upper-range state")
+        # A 30 snapshot may hold H18: a 30 created without an 18 keeps it, and a
+        # saved branch child carries its parent's. Only a 30 created beside its
+        # 18 must reference it, which `WorkerCreated` checks.
         return self
 
 
@@ -450,6 +449,8 @@ class WorkerCreated(StrictModel):
         thirty = by_depth.get(30)
         if thirty is not None and 18 in by_depth and thirty.parent is None:
             raise ValueError("a paired 30 snapshot must name its 18 parent")
+        if thirty is not None and 18 in by_depth and thirty.bytes.h18 != 0:
+            raise ValueError("a paired 30 snapshot must reference H18, not store it")
         if self.readout is not None and 30 not in by_depth:
             raise ValueError("a readout is only produced with a 30 checkpoint")
         for row in self.snapshots:
