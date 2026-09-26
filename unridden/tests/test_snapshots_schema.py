@@ -217,13 +217,13 @@ def test_worker_snapshot_row_rejects_impossible_coverage() -> None:
         WorkerSnapshotRow.model_validate(
             _row(bytes={"lower_kv": 10, "upper_kv": 5, "h18": 10, "h30": 0})
         )
-    with pytest.raises(ValidationError, match="reference H18"):
-        WorkerSnapshotRow.model_validate(
-            _row(
-                completed_blocks=30,
-                bytes={"lower_kv": 10, "upper_kv": 10, "h18": 10, "h30": 10},
-            )
+    # A 30 created on its own keeps H18, so the row alone cannot forbid it.
+    WorkerSnapshotRow.model_validate(
+        _row(
+            completed_blocks=30,
+            bytes={"lower_kv": 10, "upper_kv": 10, "h18": 10, "h30": 10},
         )
+    )
 
 
 def _readout(**overrides: object) -> dict[str, object]:
@@ -268,6 +268,48 @@ def test_worker_created_enforces_a_consistent_snapshot_set() -> None:
         }
     )
     assert {row.completed_blocks for row in both.snapshots} == {18, 30}
+    # A 30 created beside its 18 references H18 instead of storing a copy.
+    with pytest.raises(ValidationError, match="reference H18"):
+        WorkerCreated.model_validate(
+            {
+                "type": "created",
+                "id": "c1",
+                "prompt_sha256": "a" * 64,
+                "tokens": 10,
+                "snapshots": [
+                    _row(),
+                    _row(
+                        snapshot_id="snap_b",
+                        completed_blocks=30,
+                        parent="snap_a",
+                        bytes={"lower_kv": 0, "upper_kv": 10, "h18": 10, "h30": 10},
+                    ),
+                ],
+                "block_tokens": {"lower": 10, "upper": 10},
+                "timing_ms": {"lower": 1.0, "upper": 1.0, "total": 3.0},
+                "generated_tokens": 0,
+            }
+        )
+    # A 30 created alone keeps H18 and has no parent (the worker's behavior).
+    alone = WorkerCreated.model_validate(
+        {
+            "type": "created",
+            "id": "c2",
+            "prompt_sha256": "a" * 64,
+            "tokens": 10,
+            "snapshots": [
+                _row(
+                    snapshot_id="snap_c",
+                    completed_blocks=30,
+                    bytes={"lower_kv": 10, "upper_kv": 10, "h18": 10, "h30": 10},
+                )
+            ],
+            "block_tokens": {"lower": 10, "upper": 10},
+            "timing_ms": {"lower": 1.0, "upper": 1.0, "total": 3.0},
+            "generated_tokens": 0,
+        }
+    )
+    assert alone.snapshots[0].bytes.h18 == 10
     # A readout without a 30 checkpoint is impossible.
     with pytest.raises(ValidationError, match="readout is only produced"):
         WorkerCreated.model_validate(

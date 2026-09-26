@@ -210,7 +210,8 @@ class FakeSnapshotBackend:
                     bytes=SnapshotBytes(
                         lower_kv=0 if paired else tokens,
                         upper_kv=tokens,
-                        h18=0,
+                        # Like the worker: an unpaired 30 keeps H18 itself.
+                        h18=0 if paired else tokens,
                         h30=tokens,
                     ),
                     kind=kind,
