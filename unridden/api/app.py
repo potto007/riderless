@@ -414,6 +414,10 @@ def create_app(
             service.profile is None or not service.backend.ready
         )
         snap_down = snapshots is not None and not snapshots.ready
+        if snap_down and snapshots is not None:
+            # A reaped snapshot worker is restarted in the background; health
+            # reports unavailable until it is back.
+            snapshots.schedule_recovery()
         if v1_down or snap_down:
             return _error(
                 529,

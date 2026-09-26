@@ -23,6 +23,7 @@ import pytest
 from unridden.api.app import ApiConfig, create_app
 from unridden.api.native.build import TESTED_LLAMA_REVISION
 from unridden.api.schema import BackendProfile, FullVocabularyArgmax
+from unridden.api.snapshots.errors import SnapshotUnavailableError
 from unridden.api.snapshots.schema import (
     BlockTokens,
     Boundary,
@@ -144,11 +145,25 @@ class FakeSnapshotBackend:
         self.block = asyncio.Event()
         self.entered = asyncio.Event()
         self.gate = False
+        self.start_calls = 0
+        self.fail_start = False
+        self.hello = HELLO
 
     async def start(self) -> WorkerHello:
-        self.profile = HELLO
+        self.start_calls += 1
+        if self.fail_start:
+            raise SnapshotUnavailableError("snapshot backend failed to start")
+        # A fresh worker process holds no snapshots, like the real one.
+        self._snaps.clear()
+        self._resident.clear()
+        self.profile = self.hello
         self.ready = True
-        return HELLO
+        return self.hello
+
+    def crash(self) -> None:
+        """What `_invalidate` leaves behind: the child is gone."""
+        self.ready = False
+        self.profile = None
 
     async def close(self) -> None:
         self.ready = False
@@ -1012,3 +1027,83 @@ def test_v1_and_snapshots_both_off_is_a_config_error() -> None:
 def test_defaults_keep_v1_enabled() -> None:
     assert ApiConfig().v1_enabled is True
     assert ApiConfig().snapshots_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_a_dead_worker_is_restarted_by_the_next_request(tmp_path: Path) -> None:
+    # Disk-backed, so the restarted fake reloads real state as the worker does.
+    backend = DiskBackedFakeSnapshotBackend()
+    async with client_for(backend, tmp_path, v1_enabled=False) as client:
+        memory = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+        disk = await client.post(
+            "/v2/snapshots", json=CONTEXT_BODY | {"persistence": "disk"}
+        )
+        backend.crash()
+        memory_30 = next(
+            row["id"]
+            for row in memory.json()["snapshots"]
+            if row["completed_blocks"] == 30
+        )
+        disk_30 = next(
+            row["id"]
+            for row in disk.json()["snapshots"]
+            if row["completed_blocks"] == 30
+        )
+        lost = await client.post("/v2/decisions", json=_decision(memory_30))
+        kept = await client.post("/v2/decisions", json=_decision(disk_30))
+        fresh = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+        health = await client.get("/health")
+
+    assert backend.start_calls == 2
+    # A memory snapshot died with its worker; a disk snapshot is reloaded.
+    assert lost.status_code == 404
+    assert lost.json()["error"]["code"] == "snapshot_not_found"
+    assert kept.status_code == 200
+    assert fresh.status_code == 200
+    assert health.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_failed_restart_backs_off(tmp_path: Path) -> None:
+    backend = FakeSnapshotBackend()
+    async with client_for(backend, tmp_path, v1_enabled=False) as client:
+        backend.crash()
+        backend.fail_start = True
+        first = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+        second = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+
+    assert first.status_code == 529
+    assert second.status_code == 529
+    # One attempt at startup, one recovery; the second request waits out the
+    # backoff instead of respawning a worker that just failed.
+    assert backend.start_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_a_restarted_worker_must_match_the_first(tmp_path: Path) -> None:
+    backend = FakeSnapshotBackend()
+    async with client_for(backend, tmp_path, v1_enabled=False) as client:
+        backend.crash()
+        backend.hello = HELLO.model_copy(update={"runtime_sha256": "f" * 64})
+        response = await client.post("/v2/snapshots", json=CONTEXT_BODY)
+        health = await client.get("/health")
+
+    assert response.status_code == 529
+    assert health.status_code == 529
+
+
+@pytest.mark.asyncio
+async def test_health_starts_recovery_of_a_dead_worker(tmp_path: Path) -> None:
+    backend = FakeSnapshotBackend()
+    async with client_for(backend, tmp_path, v1_enabled=False) as client:
+        backend.crash()
+        down = await client.get("/health")
+        for _ in range(50):
+            if backend.ready:
+                break
+            await asyncio.sleep(0.01)
+        up = await client.get("/health")
+
+    assert down.status_code == 529
+    assert backend.start_calls == 2
+    assert up.status_code == 200
