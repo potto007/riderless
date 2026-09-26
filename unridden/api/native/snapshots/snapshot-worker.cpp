@@ -649,7 +649,7 @@ public:
         if (type == "save") return save(request);
         if (type == "load") return load(request);
         if (type == "reference") return reference(request);
-        if (type == "generate") return generate(request);
+        if (type == "ride") return ride(request);
         throw invalid("internal", "Unknown request type");
     }
 
@@ -1403,10 +1403,10 @@ private:
     // to it afterwards. "split_prefill" runs the same split graphs from an
     // empty cache and "reference" the stock 30-block graph; both are the
     // comparison baselines.
-    json generate(const json & request) {
+    json ride(const json & request) {
         const std::string mode = request.at("mode").get<std::string>();
         if (mode != "snapshot" && mode != "split_prefill" && mode != "reference") {
-            throw invalid("internal", "Unknown generate mode");
+            throw invalid("internal", "Unknown ride mode");
         }
         if (mode != "snapshot" && !runtime_.has_reference()) {
             throw protocol_error("capability_unavailable", "", "Baseline modes need a --reference worker");
@@ -1420,7 +1420,7 @@ private:
         if (mode == "snapshot") {
             parent = &find(request.at("snapshot_id").get<std::string>());
             if (parent->completed_blocks != 30) {
-                throw protocol_error("capability_unavailable", "", "Generate needs a 30 snapshot; promote first");
+                throw protocol_error("capability_unavailable", "", "Ride needs a 30 snapshot; promote first");
             }
             (void) branch_suffix(*parent, full);
             reused = parent->tokens.size();
@@ -1516,7 +1516,7 @@ private:
         // The first sampled token needs no extra decode; each later one does.
         const size_t decode_steps = output.empty() ? 0 : output.size() - 1 + (stop_reason == "eog" ? 1 : 0);
         return {
-            {"type", "generated"},
+            {"type", "ride_result"},
             {"mode", mode},
             {"execution_mode", mode == "reference" ? "stock30" : "split18-30"},
             {"text", text},
@@ -1638,7 +1638,7 @@ int main(int argc, char ** argv) {
             {"reference_context", config.reference},
             {"context_prompt_version", CONTEXT_PROMPT_VERSION},
             {"generated_tokens", 0},
-            {"output_mode", true},
+            {"rider_mode", true},
             {"callbacks_enabled", false},
         };
         std::cout << hello.dump() << '\n' << std::flush;

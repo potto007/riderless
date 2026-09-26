@@ -317,41 +317,41 @@ class StateEvaluationResponse(StrictModel):
     usage: Usage
 
 
-# The most tokens one output request may generate. The worker also refuses a
+# The most tokens one rider request may generate. The worker also refuses a
 # prompt plus max_tokens that would not fit its context.
-MAX_OUTPUT_TOKENS = 1024
+MAX_RIDER_TOKENS = 1024
 type StopReason = Literal["eog", "max_tokens"]
 
 
-class OutputRequest(StrictModel):
+class RiderRequest(StrictModel):
     model: str = MODEL_ID
     snapshot: SnapshotRef
     prompt: str = Field(min_length=1)
-    max_tokens: int = Field(ge=1, le=MAX_OUTPUT_TOKENS)
+    max_tokens: int = Field(ge=1, le=MAX_RIDER_TOKENS)
     # Per generated step, the top-k head logits (0 disables the trace).
     top_logits: int = Field(ge=0, le=MAX_VECTOR_ROWS, default=0)
 
 
-class OutputStep(StrictModel):
+class RiderStep(StrictModel):
     token_id: int = Field(ge=0)
     top_logits: list[TopLogit] = Field(max_length=MAX_VECTOR_ROWS)
 
 
-class OutputTiming(StrictModel):
+class RiderTiming(StrictModel):
     restore_ms: float = Field(ge=0.0)
     promotion_ms: float = Field(ge=0.0)
     time_to_first_token_ms: float = Field(ge=0.0)
     decode_ms: float = Field(ge=0.0)
 
 
-class OutputUsage(StrictModel):
-    # Output mode is the one /v2 route that generates, so unlike `Usage` its
+class RiderUsage(StrictModel):
+    # Rider is the one /v2 route that generates, so unlike `Usage` its
     # output count is not pinned to zero.
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
 
 
-class OutputResponse(StrictModel):
+class RiderResponse(StrictModel):
     model: Literal["local-gemma-unridden-v1"]
     text: str
     token_ids: list[int]
@@ -360,10 +360,10 @@ class OutputResponse(StrictModel):
     block_tokens: BlockTokens
     reused_prefix_tokens: int = Field(ge=0)
     restored_bytes: int = Field(ge=0)
-    timing: OutputTiming
+    timing: RiderTiming
     decode_tokens_per_second: float = Field(ge=0.0)
-    steps: list[OutputStep] = Field(default_factory=list)
-    usage: OutputUsage
+    steps: list[RiderStep] = Field(default_factory=list)
+    usage: RiderUsage
 
 
 # ----------------------------------------------------------------------------
@@ -548,17 +548,17 @@ class WorkerState(StrictModel):
         return self
 
 
-class WorkerGenerateTiming(StrictModel):
+class WorkerRideTiming(StrictModel):
     restore: float = Field(ge=0.0)
     time_to_first_token: float = Field(ge=0.0)
     decode: float = Field(ge=0.0)
     total: float = Field(ge=0.0)
 
 
-class WorkerGenerated(StrictModel):
+class WorkerRide(StrictModel):
     # Greedy output continued from a 30 snapshot. `split_prefill` and
     # `reference` are qualification baselines a --reference worker also runs.
-    type: Literal["generated"]
+    type: Literal["ride_result"]
     id: str = Field(min_length=1)
     mode: Literal["snapshot", "split_prefill", "reference"]
     execution_mode: Literal["split18-30", "stock30"]
@@ -573,9 +573,9 @@ class WorkerGenerated(StrictModel):
     block_tokens: dict[Literal["lower", "upper", "stock"], int]
     restore: Literal["resident", "host"] | None
     restored_bytes: int = Field(ge=0)
-    timing_ms: WorkerGenerateTiming
+    timing_ms: WorkerRideTiming
     decode_tokens_per_second: float = Field(ge=0.0)
-    steps: list[OutputStep]
+    steps: list[RiderStep]
 
     @model_validator(mode="after")
     def _accounting(self) -> Self:
@@ -588,7 +588,7 @@ class WorkerGenerated(StrictModel):
         if self.restore == "resident" and self.restored_bytes != 0:
             raise ValueError("a resident branch restored no bytes")
         if (self.mode == "reference") != (self.execution_mode == "stock30"):
-            raise ValueError("execution mode does not match the generate mode")
+            raise ValueError("execution mode does not match the ride mode")
         return self
 
 
@@ -702,8 +702,8 @@ class WorkerHello(StrictModel):
     reference_context: bool
     context_prompt_version: Literal["unridden-gemma-context-v1"]
     generated_tokens: Literal[0]
-    # A worker built with the `generate` command; older workers omit it.
-    output_mode: bool = False
+    # A worker built with the `ride` command; older workers omit it.
+    rider_mode: bool = False
     callbacks_enabled: Literal[False]
 
     @model_validator(mode="after")

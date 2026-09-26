@@ -47,12 +47,12 @@ from unridden.api.snapshots.schema import (
     WorkerDropped,
     WorkerErrorMessage,
     WorkerFileEntry,
-    WorkerGenerated,
     WorkerHello,
     WorkerInspect,
     WorkerLoaded,
     WorkerPromoted,
     WorkerResult,
+    WorkerRide,
     WorkerSaved,
     WorkerState,
     WorkerVectors,
@@ -134,7 +134,7 @@ class SnapshotBackend(Protocol):
         timeout: float,
     ) -> WorkerState: ...
 
-    async def generate(
+    async def ride(
         self,
         *,
         snapshot_id: str,
@@ -143,7 +143,7 @@ class SnapshotBackend(Protocol):
         max_tokens: int,
         top_logits: int,
         timeout: float,
-    ) -> WorkerGenerated: ...
+    ) -> WorkerRide: ...
 
     async def inspect(self, *, snapshot_id: str, timeout: float) -> WorkerInspect: ...
 
@@ -565,7 +565,7 @@ class SnapshotNativeBackend:
         )
         return await self._validated(WorkerState, raw)
 
-    async def generate(
+    async def ride(
         self,
         *,
         snapshot_id: str,
@@ -574,10 +574,10 @@ class SnapshotNativeBackend:
         max_tokens: int,
         top_logits: int,
         timeout: float | None = None,
-    ) -> WorkerGenerated:
+    ) -> WorkerRide:
         raw = await self._request(
             {
-                "type": "generate",
+                "type": "ride",
                 "mode": "snapshot",
                 "snapshot_id": snapshot_id,
                 "messages": messages,
@@ -587,7 +587,7 @@ class SnapshotNativeBackend:
             },
             timeout=timeout,
         )
-        return await self._validated(WorkerGenerated, raw)
+        return await self._validated(WorkerRide, raw)
 
     async def inspect(
         self, *, snapshot_id: str, timeout: float | None = None

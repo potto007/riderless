@@ -46,7 +46,7 @@ from unridden.api.snapshots.errors import (
     SnapshotUnavailableError,
 )
 from unridden.api.snapshots.schema import (
-    OutputRequest,
+    RiderRequest,
     SnapshotCreateRequest,
     StateEvaluationRequest,
     V2DecisionRequest,
@@ -60,9 +60,9 @@ DECISION_PATH = "/v1/decisions"
 V2_SNAPSHOTS_PATH = "/v2/snapshots"
 V2_DECISIONS_PATH = "/v2/decisions"
 V2_STATE_EVAL_PATH = "/v2/state-evaluations"
-V2_OUTPUTS_PATH = "/v2/outputs"
+V2_RIDER_PATH = "/v2/rider"
 V2_BOUNDED_POST_PATHS = frozenset(
-    {V2_SNAPSHOTS_PATH, V2_DECISIONS_PATH, V2_STATE_EVAL_PATH, V2_OUTPUTS_PATH}
+    {V2_SNAPSHOTS_PATH, V2_DECISIONS_PATH, V2_STATE_EVAL_PATH, V2_RIDER_PATH}
 )
 # Compatibility alias. Same handler, same bodies; an interoperability path for
 # clients written against this project's earlier request shape.
@@ -592,12 +592,12 @@ def _register_v2_routes(app: FastAPI) -> None:
         service = _snapshots(request)
         return await _run_snapshot(request, service.state_eval(body, owner="local"))
 
-    @app.post("/v2/outputs")
-    async def v2_output(body: OutputRequest, request: Request) -> Any:
+    @app.post("/v2/rider")
+    async def v2_rider(body: RiderRequest, request: Request) -> Any:
         if body.model != MODEL_ID:
             return _error(404, "unknown_model", "requested model is not available")
         service = _snapshots(request)
-        return await _run_snapshot(request, service.output(body))
+        return await _run_snapshot(request, service.ride(body))
 
     @app.get("/v2/snapshots/{snapshot_id}")
     async def snapshot_metadata(snapshot_id: str, request: Request) -> Any:

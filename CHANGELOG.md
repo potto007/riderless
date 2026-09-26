@@ -13,11 +13,11 @@ published measurements were taken on.
 
 ### Added
 
-- Experimental `POST /v2/outputs` (with `--snapshots`): greedy text generation
-  that continues from a saved snapshot on the split runtime without
-  re-prefilling the snapshot prefix (ADR 0007). The snapshot worker gains a
-  `generate` command. This is the one route that generates tokens; `/v1` and
-  the decision routes still generate none.
+- Experimental Rider mode, `POST /v2/rider` (with `--snapshots`): greedy text
+  generation that continues from a saved snapshot on the split runtime without
+  re-prefilling the snapshot prefix (ADR 0007, named in ADR 0008). The snapshot
+  worker gains a `ride` command. This is the one route that generates tokens;
+  `/v1` and the decision routes still generate none.
 
 ## 0.4.0 - 2026-09-23
 

@@ -39,12 +39,12 @@ from unridden.api.snapshots.mapping import map_answer
 from unridden.api.snapshots.schema import (
     SNAPSHOT_PROFILE,
     BlockTokens,
-    OutputRequest,
-    OutputResponse,
-    OutputTiming,
-    OutputUsage,
     Persistence,
     Promotion,
+    RiderRequest,
+    RiderResponse,
+    RiderTiming,
+    RiderUsage,
     SnapshotCreateRequest,
     SnapshotCreateResponse,
     SnapshotMetadata,
@@ -546,7 +546,7 @@ class SnapshotService:
                 usage=Usage(input_tokens=state.suffix_tokens),
             )
 
-    async def output(self, request: OutputRequest) -> OutputResponse:
+    async def ride(self, request: RiderRequest) -> RiderResponse:
         """Generate text from a snapshot without recomputing its prefix.
 
         The prompt branches off the snapshot exactly as a state evaluation
@@ -554,8 +554,8 @@ class SnapshotService:
         trims back to the parent, so the snapshot stays immutable.
         """
         async with self._serialized() as (profile, store):
-            if not profile.output_mode:
-                raise CapabilityUnavailable("the snapshot worker has no output mode")
+            if not profile.rider_mode:
+                raise CapabilityUnavailable("the snapshot worker has no rider mode")
             plan = await self._plan(store, request.snapshot)
             if plan.mode == "context":
                 branch = compile_context_prompt(plan.messages, request.prompt)
@@ -565,7 +565,7 @@ class SnapshotService:
                 )
             with store.lease(plan.effective_parent):
                 parent = await store.restore(plan.effective_parent)
-                result = await self._backend.generate(
+                result = await self._backend.ride(
                     snapshot_id=plan.effective_parent,
                     messages=branch.messages,
                     answer_prefix=branch.answer_prefix,
@@ -584,7 +584,7 @@ class SnapshotService:
                     "worker step trace does not match its output"
                 )
             blocks = result.block_tokens
-            return OutputResponse(
+            return RiderResponse(
                 model=MODEL_ID,  # type: ignore[arg-type]
                 text=result.text,
                 token_ids=result.token_ids,
@@ -595,7 +595,7 @@ class SnapshotService:
                 ),
                 reused_prefix_tokens=result.reused_tokens,
                 restored_bytes=result.restored_bytes,
-                timing=OutputTiming(
+                timing=RiderTiming(
                     restore_ms=result.timing_ms.restore,
                     promotion_ms=plan.promotion_ms,
                     time_to_first_token_ms=result.timing_ms.time_to_first_token,
@@ -603,7 +603,7 @@ class SnapshotService:
                 ),
                 decode_tokens_per_second=result.decode_tokens_per_second,
                 steps=result.steps,
-                usage=OutputUsage(
+                usage=RiderUsage(
                     input_tokens=result.prefilled_tokens,
                     output_tokens=result.generated_tokens,
                 ),
