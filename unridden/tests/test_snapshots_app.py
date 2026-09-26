@@ -27,19 +27,19 @@ from unridden.api.snapshots.schema import (
     BlockTokens,
     Boundary,
     ExportKind,
-    OutputStep,
+    RiderStep,
     SnapshotBytes,
     TopLogit,
     VectorArtifact,
     WorkerCreated,
     WorkerCreateTiming,
-    WorkerGenerated,
-    WorkerGenerateTiming,
     WorkerHello,
     WorkerPromoted,
     WorkerPromoteTiming,
     WorkerReadout,
     WorkerResult,
+    WorkerRide,
+    WorkerRideTiming,
     WorkerSnapshotBranch,
     WorkerSnapshotQuestionResult,
     WorkerSnapshotRow,
@@ -66,7 +66,7 @@ HELLO = WorkerHello(
     reference_context=False,
     context_prompt_version="unridden-gemma-context-v1",
     generated_tokens=0,
-    output_mode=True,
+    rider_mode=True,
     callbacks_enabled=False,
 )
 
@@ -416,7 +416,7 @@ class FakeSnapshotBackend:
             generated_tokens=0,
         )
 
-    async def generate(
+    async def ride(
         self,
         *,
         snapshot_id: str,
@@ -425,20 +425,20 @@ class FakeSnapshotBackend:
         max_tokens: int,
         top_logits: int,
         timeout: float | None = None,
-    ) -> WorkerGenerated:
+    ) -> WorkerRide:
         content = "".join(message["content"] for message in messages) + answer_prefix
         suffix = _tokens([m["content"] for m in messages if m["role"] == "user"][-1])
         reused = self._snaps[snapshot_id]["tokens"]
         token_ids = list(range(100, 100 + max_tokens))
         steps = [
-            OutputStep(
+            RiderStep(
                 token_id=token,
                 top_logits=[TopLogit(token_id=token, logit=1.0)][:top_logits],
             )
             for token in token_ids
         ]
-        return WorkerGenerated(
-            type="generated",
+        return WorkerRide(
+            type="ride_result",
             id="g",
             mode="snapshot",
             execution_mode="split18-30",
@@ -456,7 +456,7 @@ class FakeSnapshotBackend:
             },
             restore="resident",
             restored_bytes=0,
-            timing_ms=WorkerGenerateTiming(
+            timing_ms=WorkerRideTiming(
                 restore=0.0, time_to_first_token=1.0, decode=2.0, total=3.0
             ),
             decode_tokens_per_second=100.0,
@@ -867,14 +867,14 @@ async def test_state_evaluation_returns_tagged_vectors(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_output_generates_from_a_snapshot(tmp_path: Path) -> None:
+async def test_rider_generates_from_a_snapshot(tmp_path: Path) -> None:
     async with client_for(FakeSnapshotBackend(), tmp_path) as client:
         created = (await client.post("/v2/snapshots", json=CONTEXT_BODY)).json()
         snap30 = next(
             r["id"] for r in created["snapshots"] if r["completed_blocks"] == 30
         )
         response = await client.post(
-            "/v2/outputs",
+            "/v2/rider",
             json={
                 "snapshot": {"id": snap30, "relationship": "followup"},
                 "prompt": "draft a reply",
@@ -883,7 +883,7 @@ async def test_output_generates_from_a_snapshot(tmp_path: Path) -> None:
             },
         )
         too_long = await client.post(
-            "/v2/outputs",
+            "/v2/rider",
             json={
                 "snapshot": {"id": snap30, "relationship": "followup"},
                 "prompt": "draft a reply",
